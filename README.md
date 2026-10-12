@@ -18,13 +18,15 @@ uv run python -m pipeline.s07_labels      # подписи улиц и рек
 python3 -m http.server 8643 --directory web
 ```
 
-Сырьё в `data/raw/` (не в git): `spb.osm.pbf` (BBBike, ODbL); `gisgkh_spb.parquet` — ГИС ЖКХ из дампа
+Сырьё в `data/raw/` (не в git): `spb.osm.pbf` (BBBike, ODbL); `hoith_spb.parquet` — «How old is this house»
+(Кон-Тики, ODbL, версия 18.11.2023, вырезка Saint-Petersburg из HOITH_database_231118.gpkg); `gisgkh_spb.parquet` — ГИС ЖКХ из дампа
 «Если быть точным» (tochno.st/datasets/gisgkh, CC BY 4.0, сентябрь 2026); `wd_spb.csv`; `pandan_bombing.xlsx`
 (PANDAN ЕУСПб, github.com/Julianna-fil/bombing); `plaques.csv`, `districts.json`, `water_relations.json` (OSM/Overpass).
 
 ## Данные
 
-- Год известен у 17,5% зданий: ГИС ЖКХ (13,4 тыс.), Wikidata/ЕГРОКН (2,7 тыс.), OSM (2,6 тыс.).
+- Год известен у 43% зданий: Кон-Тики (28,4 тыс.), ГИС ЖКХ (13 тыс.), Wikidata/ЕГРОКН (2,7 тыс.), OSM (2,1 тыс.).
+- citywalls.ru не парсим: robots.txt запрещает ИИ-краулеры. Ссылки на страницы домов берём из Кон-Тики.
   Остальные серые и появляются, когда таймлайн доходит до сегодняшнего дня.
 - 1917 в ГИС ЖКХ означает «до революции»: год разносится по 1880–1917 и помечается приблизительным.
 - Следующие источники (качает пользователь, Яндекс.Диск и госпорталы не отдают файлы на зарубежный IP):

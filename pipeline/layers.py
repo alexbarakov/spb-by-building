@@ -65,16 +65,18 @@ def osm_points(pattern: str) -> gpd.GeoDataFrame:
 # ---------- layers ----------
 
 STYLE_GROUPS = [
-    ("baroque", "Барокко", r"барокко|baroque"),
-    ("stalin", "Сталинский неоклассицизм", r"stalinist|сталинск|^архитектура неоклассицизма"),
+    # Order matters: the first pattern that matches wins.
+    ("stalin", "Сталинский неоклассицизм", r"stalinist|сталинск"),
+    ("baroque", "Барокко", r"^барокко|^baroque|петровское барокко|^архитектура барокко"),
+    ("moderne", "Модерн и неоклассицизм 1900-х", r"модерн$|^модерн|art_nouveau|nothern_modern|национальный романтизм|^неоклассицизм|^архитектура неоклассицизма"),
     ("classic", "Классицизм и ампир", r"классицизм|ампир|^neoclassicism$|^classicism$"),
-    ("eclectic", "Эклектика и русский стиль", r"эклектика|eclectic|русский стиль|неоренессанс|неоготика|кирпичный|brick"),
-    ("moderne", "Модерн", r"модерн|art_nouveau|nothern_modern|национальный романтизм"),
+    ("eclectic", "Эклектика и историзм", r"эклектик|eclectic|русский стиль|неорусск|неоренессанс|неоготик|псевдоготик|кирпичн|brick|византийск|ретроспектив|необарокко"),
     ("constr", "Конструктивизм", r"конструктив|constructivism"),
+    ("modern", "Современная архитектура", r"современн|contemporary|модернизм|функционализм"),
 ]
 
 
-STYLE_ORDER = ["baroque", "classic", "eclectic", "moderne", "constr", "stalin"]
+STYLE_ORDER = ["baroque", "classic", "eclectic", "moderne", "constr", "stalin", "modern"]
 
 
 @layer(
@@ -82,8 +84,8 @@ STYLE_ORDER = ["baroque", "classic", "eclectic", "moderne", "constr", "stalin"]
     text=("Петербург строили волнами, и каждая оставила свой стиль: барокко Трезини и Растрелли, строгий "
           "классицизм и ампир Росси, пёструю эклектику доходных домов, северный модерн начала века, "
           "конструктивизм рабочих кварталов и сталинские парадные проспекты."),
-    caveat="Стиль указан в OpenStreetMap или Wikidata примерно у 3% зданий.",
-    source=("OpenStreetMap и Wikidata", "https://www.wikidata.org"),
+    caveat="Стиль по OpenStreetMap, Wikidata и базе «How old is this house» (Кон-Тики); указан примерно у 15% зданий.",
+    source=("OpenStreetMap, Wikidata, Кон-Тики", "https://how-old-is-this.house"),
     groups=[(k, label) for k, label, _ in sorted(STYLE_GROUPS, key=lambda g: STYLE_ORDER.index(g[0]))],
 )
 def styles():
@@ -100,6 +102,12 @@ def styles():
             if v and re.search(pat, v, re.I):
                 out.setdefault(ident, k)
                 break
+    for ident, v in zip(b.identificatie, b.style_hoith):
+        if isinstance(v, str) and ident not in out:
+            for k, _, pat in STYLE_GROUPS:
+                if re.search(pat, v.strip(), re.I):
+                    out[ident] = k
+                    break
     return out
 
 

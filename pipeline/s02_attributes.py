@@ -3,6 +3,8 @@
 Year sources, in order of trust (date_flag in brackets):
   monument   Wikidata item of a cultural heritage object (EGROKN id) inside the footprint or within 20 m:
              to the year [3], or spread across its decade or century [4]
+  hoith      "How old is this house" (Kon-Tiki maps, ODbL, Nov 2023): official address plan, housing passports,
+             citywalls and OSM merged; the first year of its range [0], or spread across the range [1]
   osm        OSM start_date: a year [0]; a range or a century is spread across it [1]
   mkd        GIS ZhKKh apartment-building registry (tochno.st dump, Sept 2026, CC BY 4.0), geocoded to the house,
              within the footprint or 15 m [0]; its 1917 means "before the revolution" and is spread across 1880–1917 [1]
@@ -79,6 +81,20 @@ def registry_dates(b):
     return j.drop_duplicates("identificatie").set_index("identificatie")
 
 
+def hoith_dates(b):
+    """Kon-Tiki footprints matched to OSM buildings by a point inside each footprint."""
+    h = gpd.read_parquet("data/raw/hoith_spb.parquet", columns=["r_years_str", "r_year_int", "r_architect", "r_style", "r_cw_url", "geometry"])
+    h = h[pd.to_numeric(h.r_year_int, errors="coerce") > 0].copy()
+    yrs = h.r_years_str.fillna("").str.findall(r"(?<!\d)(1[7-9]\d\d|20[0-2]\d)(?!\d)")
+    h["lo"] = yrs.map(lambda v: int(v[0]) if v else None)
+    rng = h.r_years_str.fillna("").str.extract(r"(1[7-9]\d\d|20[0-2]\d)\s*[-–]\s*(1[7-9]\d\d|20[0-2]\d)")
+    h["hi"] = pd.to_numeric(rng[1], errors="coerce")
+    h["lo"] = h.lo.fillna(pd.to_numeric(h.r_year_int, errors="coerce"))
+    pts = gpd.GeoDataFrame(h.drop(columns="geometry"), geometry=h.geometry.representative_point(), crs=CRS)
+    j = gpd.sjoin(pts, b[["identificatie", "geometry"]], predicate="within").drop(columns="index_right")
+    return j.drop_duplicates("identificatie").set_index("identificatie")
+
+
 def main():
     b = gpd.read_parquet("data/osm_buildings.parquet").reset_index(drop=True)
     n = len(b)
@@ -96,6 +112,8 @@ def main():
         src[i] = "mkd"
     b["series"] = b.identificatie.map(r.series)
 
+    hoith = None  # filled below, after OSM
+
     for i, s in enumerate(b.start_date.values):
         d = parse_osm_date(s)
         if d and 1700 <= d[0] <= 2025:
@@ -103,6 +121,21 @@ def main():
             year[i] = lo if lo == hi else int(lo + unit(ids[i], "osm") * (hi - lo))
             flag[i] = EXACT if lo == hi else FAINT
             src[i] = "osm"
+
+    # Kon-Tiki over OSM; over the registry only where the registry has its "before 1917" placeholder.
+    h = hoith_dates(b)
+    for i in np.where(b.identificatie.isin(h.index))[0]:
+        if src[i] == "mkd" and flag[i] == EXACT:
+            continue
+        lo, hi = int(h.at[ids[i], "lo"]), h.at[ids[i], "hi"]
+        if pd.notna(hi) and hi > lo:
+            year[i], flag[i] = int(lo + unit(ids[i], "hoith") * (hi - lo)), FAINT
+        else:
+            year[i], flag[i] = lo, EXACT
+        src[i] = "hoith"
+    b["architect_hoith"] = b.identificatie.map(h.r_architect).replace("", None)
+    b["style_hoith"] = b.identificatie.map(h.r_style).replace("", None)
+    b["citywalls"] = b.identificatie.map(h.r_cw_url).replace("", None)
 
     w = wikidata_dates(b)
     for i in np.where(b.identificatie.isin(w.index))[0]:

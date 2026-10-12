@@ -350,12 +350,13 @@ function pick(x, y) {
 }
 
 // ---------- Building lookup ----------
-const SOURCE = ['', 'реестр многоквартирных домов ГИС ЖКХ', 'OpenStreetMap', 'реестр объектов культурного наследия (Wikidata)'];
+const SOURCE = ['', 'реестр многоквартирных домов ГИС ЖКХ', 'OpenStreetMap', 'реестр объектов культурного наследия (Wikidata)',
+  'база «How old is this house» (Кон-Тики)'];
 function dateNote(b) {
   if (b.flag === 5) return 'Год постройки неизвестен: здания нет ни в ГИС ЖКХ, ни в реестре наследия, и в OpenStreetMap дата не указана. Здание серое и появляется на карте, когда таймлайн доходит до сегодняшнего дня.';
   if (b.flag === 4) return 'Дата из реестра наследия с точностью до десятилетия или века; на карте год разнесён по этому промежутку.';
   if (b.flag === 1 && b.src === 1) return 'В ГИС ЖКХ стоит 1917 год — так обычно отмечают дома, построенные до революции. Читайте как «до 1918»; на карте год разнесён по 1880–1917.';
-  if (b.flag === 1) return 'В OpenStreetMap указан диапазон или век; на карте год разнесён по нему.';
+  if (b.flag === 1) return `В источнике (${SOURCE[b.src]}) указан диапазон лет; на карте год разнесён по нему.`;
   return `Год: ${SOURCE[b.src]}.`;
 }
 const groupsByBit = layers.flatMap(L => L.groups.map(g => ({ ...g, layer: L })));
@@ -382,8 +383,9 @@ const periodOf = y => periods.find(p => y >= p.from && y <= p.to) || periods[0];
 
 // ---------- Building card ----------
 // Hover shows a light card that follows the pointer; a click pins it, with the article extract and links.
-let wiki = [];
+let wiki = [], extras = {};
 fetch('data/wiki.json').then(r => r.json()).then(w => { wiki = w; });
+fetch('data/extras.json').then(r => r.json()).then(e => { extras = e; });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const link = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 const STOREYS = ['по данным OpenStreetMap', 'по высоте ÷ 3,2 м', 'оценка по типу здания'];
@@ -397,14 +399,16 @@ function groupColor(g) {
 function cardHtml(gid, pinned) {
   const b = building(gid);
   const w = b.wk >= 0 ? wiki[b.wk] : null;
+  const x = extras[gid] || {};
   const im = w?.image?.thumb ? w.image : null;
   const unknown = b.flag === 5;
   const period = unknown ? { label: config.unknown.label, color: config.unknown.color } : periodOf(b.year);
   const facts = [
     ['Высота', `${b.height.toFixed(1).replace('.', ',')} м`],
     ['Этажность', STOREYS[b.fsrc]],
-    w?.architects?.length && [w.architects.length > 1 ? 'Архитекторы' : 'Архитектор', w.architects.map(esc).join(', ')],
-    w?.styles?.length && ['Стиль', w.styles.map(esc).join(', ')],
+    w?.architects?.length ? [w.architects.length > 1 ? 'Архитекторы' : 'Архитектор', w.architects.map(esc).join(', ')]
+      : x.a && [x.a.includes(',') ? 'Архитекторы' : 'Архитектор', esc(x.a)],
+    w?.styles?.length ? ['Стиль', w.styles.map(esc).join(', ')] : x.s && ['Стиль', esc(x.s)],
   ].filter(Boolean);
   const credit = im && (pinned
     ? `${link(im.page || im.thumb, im.artist || 'Wikimedia Commons')}${im.license ? `, ${im.licenseUrl ? link(im.licenseUrl, im.license) : esc(im.license)}` : ''}`
@@ -412,6 +416,7 @@ function cardHtml(gid, pinned) {
   const sources = [
     w?.wiki?.url && link(w.wiki.url, w.wiki.lang === 'ru' ? 'Википедия' : 'Wikipedia (англ.)'),
     b.q && link(`https://www.wikidata.org/wiki/Q${b.q}`, 'Wikidata'),
+    x.cw && link(`https://www.citywalls.ru/house${x.cw}.html`, 'Citywalls'),
     link(`https://www.openstreetmap.org/${b.osm}`, 'OpenStreetMap'),
   ].filter(Boolean);
   // Each layer the building is in, with its story: the plaque's words, the MPVO report, the documented history.

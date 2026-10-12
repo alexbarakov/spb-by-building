@@ -136,13 +136,23 @@ def main():
     attrs["osm"] = [osm_number(i) for i in b.identificatie]
     attrs["h"] = np.round(b.height.fillna(0) * 10).clip(0, 65535)
     attrs["fsrc"] = b.floors_src; attrs["flag"] = b.date_flag; attrs["year"] = b.year
-    attrs["src"] = b.year_src.map({"": 0, "mkd": 1, "osm": 2, "monument": 3}).fillna(0).astype(int)
+    attrs["src"] = b.year_src.map({"": 0, "mkd": 1, "osm": 2, "monument": 3, "hoith": 4}).fillna(0).astype(int)
     attrs["q"] = pd.to_numeric(b.wikidata_item.astype(str).str.extract(r"Q(\d+)")[0], errors="coerce").fillna(0).astype(int)
     attrs["lay0"] = b.lay0; attrs["lay1"] = b.lay1
     wk_path = Path("data/wiki_index.parquet")
     wk = pd.read_parquet(wk_path).set_index("identificatie").wk if wk_path.exists() else pd.Series(dtype=int)
     attrs["wk"] = b.identificatie.map(wk).fillna(-1).astype(int)
     (OUT / "attrs.bin").write_bytes(attrs.tobytes())
+
+    # Architect, style and the citywalls page from the Kon-Tiki dataset, by building index; read lazily by the card.
+    extras = {}
+    for i, (a, st, cw) in enumerate(zip(b.get("architect_hoith"), b.get("style_hoith"), b.get("citywalls"))):
+        e = {k: v for k, v in (("a", a), ("s", st), ("cw", cw)) if isinstance(v, str) and v.strip()}
+        if "cw" in e:
+            e["cw"] = e["cw"].rsplit("house", 1)[-1].split(".")[0]
+        if e:
+            extras[i] = e
+    (OUT / "extras.json").write_text(json.dumps(extras, ensure_ascii=False, separators=(",", ":")))
 
     known = b[b.date_flag != 5]
     hist = {}
