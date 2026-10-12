@@ -21,6 +21,27 @@ OUT = Path("web/data")
 SEA_SEEDS = [(30.10, 59.93)]
 
 
+def relation_polygons(path="data/raw/water_relations.json"):
+    """Polygons from Overpass relations with `out geom`: outer rings minus inner rings."""
+    import json
+    from shapely.geometry import LineString
+    out = []
+    for rel in json.load(open(path))["elements"]:
+        rings = {"outer": [], "inner": []}
+        for m in rel.get("members", []):
+            if m.get("type") == "way" and m.get("geometry") and len(m["geometry"]) > 1:
+                pts = [TO_CRS.transform(g["lon"], g["lat"]) for g in m["geometry"]]
+                rings["inner" if m.get("role") == "inner" else "outer"].append(LineString(pts))
+        outer = shapely.union_all(list(shapely.polygonize(rings["outer"]).geoms)) if rings["outer"] else None
+        if outer is None or outer.is_empty:
+            continue
+        if rings["inner"]:
+            inner = shapely.union_all(list(shapely.polygonize(rings["inner"]).geoms))
+            outer = outer.difference(inner)
+        out.append(shapely.make_valid(outer))
+    return out
+
+
 def polygons(geom):
     return [g for g in getattr(geom, "geoms", [geom]) if g.geom_type == "Polygon" and not g.is_empty]
 
@@ -48,7 +69,9 @@ def main():
     mp = pyogrio.read_dataframe(OSM, layer="multipolygons", columns=["natural", "other_tags"])
     tags = mp.other_tags.fillna("")
     water = mp[(mp.natural == "water") | tags.str.contains('"water"=>"(river|canal)"|"waterway"=>"riverbank"', regex=True)]
-    inland = shapely.make_valid(water.to_crs(CRS).union_all())
+    rel = relation_polygons()
+    print("relations as polygons", len(rel), "km²", round(sum(p.area for p in rel) / 1e6, 1))
+    inland = shapely.make_valid(shapely.union_all([water.to_crs(CRS).union_all(), *rel]))
 
     lines = pyogrio.read_dataframe(OSM, layer="lines", columns=["other_tags"])
     coast = lines[lines.other_tags.fillna("").str.contains('"natural"=>"coastline"')].to_crs(CRS)

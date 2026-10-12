@@ -114,8 +114,10 @@ function updateLabels(dist) {
   const flipLabels = Math.abs(controls.getAzimuthalAngle()) > Math.PI / 2;
   if (!document.fonts.check('700 16px "Onest"')) return;
   // Label height in metres, roughly constant on screen; the canals and main streets read larger.
-  const h1 = THREE.MathUtils.clamp(dist * 0.022, 9, 170), h2 = THREE.MathUtils.clamp(dist * 0.015, 6, 34);
-  const near = Math.max(1200, dist * 1.2), far = Math.max(9000, dist * 3);
+  // Names appear only up close: rivers, canals and the main avenues from 4.5 km, other streets from 1.3 km.
+  const h1 = THREE.MathUtils.clamp(dist * 0.014, 6, 45), h2 = THREE.MathUtils.clamp(dist * 0.011, 4, 14);
+  const near = Math.max(900, dist * 1.1), far = Math.max(3000, dist * 1.8);
+  const TIER1_FROM = 4500, TIER2_FROM = 1300;
   // Greedy collision: canals and main streets first, then the longest stretches; a label is dropped
   // when an accepted one already sits within a few label heights of it.
   const taken = new Map(), C = h1 * 5; // one grid, cells as wide as the largest separation
@@ -129,7 +131,7 @@ function updateLabels(dist) {
   };
   for (const l of labels) {
     const d = Math.hypot(l.x - camera.position.x, l.z - camera.position.z);
-    let show = d < (l.L.tier === 1 ? far : near) && (l.L.tier === 1 || dist < 1800);
+    let show = d < (l.L.tier === 1 ? far : near) && dist < (l.L.tier === 1 ? TIER1_FROM : TIER2_FROM);
     const sep = (l.L.tier === 1 ? h1 : h2) * 5;
     if (show && !clear(l, sep)) show = false;
     if (show) {
