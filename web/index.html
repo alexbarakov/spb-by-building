@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Петербург, дом за домом</title>
+<title>LAYRS: Петербург</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=PT+Serif:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
@@ -15,10 +15,7 @@
 <div class="veil veil-bottom" aria-hidden="true"></div>
 
 <header class="masthead">
-  <svg class="spire" viewBox="0 0 20 80" aria-hidden="true">
-    <path d="M10 0 12.2 58H7.8z" fill="currentColor"/><circle cx="10" cy="62" r="2.6" fill="currentColor"/>
-    <path d="M4 68h12v3H4zM2 74h16v6H2z" fill="currentColor"/>
-  </svg>
+  <span class="layrs" aria-label="LAYRS">LAYRS</span>
   <div>
     <h1>Петербург</h1>
     <p class="dek">Каждое здание города по году постройки.</p>
@@ -40,7 +37,10 @@
   <button class="sheet-handle" aria-expanded="true" aria-controls="panel-body">Показать легенду</button>
   <div id="panel-body"></div>
 </aside>
-<button class="about-open" aria-haspopup="dialog">О проекте</button>
+<nav class="corner" aria-label="Проект">
+  <button class="about-open" aria-haspopup="dialog">О проекте</button>
+  <a class="sibling" href="../amsterdam/">LAYRS: Amsterdam</a>
+</nav>
 <dialog id="about" class="about" aria-labelledby="about-title">
   <button class="about-close" aria-label="Закрыть">×</button>
   <article>
@@ -49,8 +49,14 @@
     от квартир Пушкина и дворов-колодцев до сводок МПВО осени 1941-го и табличек «Последнего адреса».</p>
     <p class="notice">Некоммерческий проект, сделан из любопытства и чтобы учиться. Не продаётся, без рекламы и без отслеживания.</p>
     <p class="author">Автор — <a href="https://www.linkedin.com/in/alexanderbarakov" target="_blank" rel="noopener">Александр Бараков</a>.</p>
-    <p class="credit">По мотивам проекта Саши Богачёва <a href="https://paris.bogachev.fr" target="_blank" rel="noopener">Paris, building by building</a>.
-    Сестринская карта: <a href="../amsterdam/">Амстердам, дом за домом</a>.</p>
+    <p class="credit">По мотивам проекта Саши Богачёва <a href="https://paris.bogachev.fr" target="_blank" rel="noopener">Paris, building by building</a>.</p>
+
+    <h3>Проекты LAYRS</h3>
+    <p>LAYRS — карты городов, где каждое здание показано вместе с его возрастом и историческими слоями.</p>
+    <ul>
+      <li><a href="../spb/">LAYRS: Петербург</a> — вы здесь.</li>
+      <li><a href="../amsterdam/">LAYRS: Amsterdam</a> — 192 тысячи зданий Амстердама и его история.</li>
+    </ul>
 
     <h3>Как читать карту</h3>
     <p>Цвет — эпоха постройки. Бледные здания датированы приблизительно: по веку, десятилетию или диапазону лет.
