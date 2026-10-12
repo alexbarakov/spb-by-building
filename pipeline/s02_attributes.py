@@ -173,6 +173,14 @@ def main():
     for col in ("name", "author", "protection", "page", "wdid", "year"):
         b[f"wv_{col}"] = b.identificatie.map(v[col])
 
+    # Key buildings checked by hand win over every source.
+    from .curated import LANDMARKS
+    pos = {k: i for i, k in enumerate(ids)}
+    for ident, lo, hi, *_ in LANDMARKS:
+        if ident in pos:
+            i = pos[ident]
+            year[i], flag[i], src[i] = (lo, MONUMENT, "manual") if lo == hi else (lo, MONUMENT_APPROX, "manual")
+
     unknown = flag == UNKNOWN
     year[unknown] = 2025
     b["year"] = year; b["date_flag"] = flag.astype(np.uint8); b["year_src"] = src

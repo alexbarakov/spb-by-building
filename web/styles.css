@@ -24,12 +24,14 @@ button { font: inherit; color: inherit; }
 /* Masthead: the three crosses, then the name set large and tight. */
 .masthead { position: fixed; top: calc(env(safe-area-inset-top, 0px) + var(--gutter)); left: var(--gutter);
   display: flex; gap: 14px; align-items: flex-start; pointer-events: none; }
-/* LAYRS: the wordmark set vertically on a block of the city's accent, standing before the city's name. */
-.layrs { writing-mode: vertical-rl; transform: rotate(180deg); flex: none; align-self: flex-start;
-  background: var(--red); color: var(--paper); font: 800 11px/1 "Onest", sans-serif; letter-spacing: .2em;
-  padding: 7px 4px 5px; border-radius: 3px; margin-top: 3px; }
+/* LAYRS: the wordmark set vertically on a block of the city's accent, as tall as the name's capitals (sized in app.js). */
+h1 { position: relative; }
+.layrs { font-family: "Onest", sans-serif; position: absolute; left: 0; top: 0; writing-mode: vertical-rl; transform: rotate(180deg); display: flex;
+  align-items: center; justify-content: center; background: var(--red); color: var(--paper); font-weight: 800;
+  line-height: 1; letter-spacing: .14em; padding: 0 .3em; border-radius: 2px; box-sizing: border-box; }
+.baseline { display: inline-block; width: 0; height: 0; vertical-align: baseline; }
 h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, serif; letter-spacing: -0.01em; }
-.dek { margin: 8px 0 0; color: var(--muted); max-width: 26ch; font-size: 14px; line-height: 1.4; }
+.dek { margin: 8px 0 0; color: var(--muted); max-width: 30ch; font-size: 14px; line-height: 1.4; }
 
 /* Mode switch: a single bar, the active mode filled black. */
 .modes { position: fixed; top: calc(env(safe-area-inset-top, 0px) + var(--gutter)); left: 50%; transform: translateX(-50%);
@@ -42,7 +44,7 @@ h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, seri
 .tally-count { color: var(--muted); }
 
 /* Context panel: legend, ramp or layer list, always on the left under the masthead. */
-.panel { position: fixed; left: var(--gutter); top: calc(env(safe-area-inset-top, 0px) + var(--gutter) + 120px);
+.panel { position: fixed; left: var(--gutter); top: calc(env(safe-area-inset-top, 0px) + var(--gutter) + 136px);
   width: min(340px, calc(100vw - 2 * var(--gutter))); max-height: calc(100vh - 300px); overflow-y: auto;
   background: var(--paper); border-radius: 10px; padding: 14px 16px; }
 .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
@@ -163,7 +165,6 @@ h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, seri
 @media (max-width: 720px) {
   .dek { display: none; }
   h1 { font-size: 30px; }
-  .layrs { font-size: 8px; padding: 5px 3px 4px; }
   .tally-year { font-size: 30px; }
   .tally-count { font-size: 12px; }
   .masthead, .tally { top: calc(env(safe-area-inset-top, 0px) + 14px); }

@@ -136,7 +136,7 @@ def main():
     attrs["osm"] = [osm_number(i) for i in b.identificatie]
     attrs["h"] = np.round(b.height.fillna(0) * 10).clip(0, 65535)
     attrs["fsrc"] = b.floors_src; attrs["flag"] = b.date_flag; attrs["year"] = b.year
-    attrs["src"] = b.year_src.map({"": 0, "mkd": 1, "osm": 2, "monument": 3, "hoith": 4}).fillna(0).astype(int)
+    attrs["src"] = b.year_src.map({"": 0, "mkd": 1, "osm": 2, "monument": 3, "hoith": 4, "manual": 5}).fillna(0).astype(int)
     attrs["q"] = pd.to_numeric(b.wikidata_item.astype(str).str.extract(r"Q(\d+)")[0], errors="coerce").fillna(0).astype(int)
     attrs["lay0"] = b.lay0; attrs["lay1"] = b.lay1
     wk_path = Path("data/wiki_index.parquet")

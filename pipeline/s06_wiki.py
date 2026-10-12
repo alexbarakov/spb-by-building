@@ -112,6 +112,27 @@ def main():
         entries.append(dict(label=it["label"], wiki=wiki, architects=it["architects"], styles=it["styles"], image=img))
         for b in it["ids"]:
             index.setdefault(b, k)
+    # Hand-checked landmarks: the article named in curated.LANDMARKS replaces whatever the automatic match found.
+    from .curated import LANDMARKS
+    titles = [l[4] for l in LANDMARKS]
+    r = get_json("https://ru.wikipedia.org/w/api.php", {"action": "query", "format": "json", "prop": "extracts|pageimages",
+                  "exintro": 1, "explaintext": 1, "exsentences": 3, "exlimit": 20, "piprop": "name", "redirects": 1,
+                  "titles": "|".join(titles)})
+    norm = {n["to"]: n["from"] for n in r["query"].get("normalized", []) + r["query"].get("redirects", [])}
+    pages = {}
+    for p in r["query"]["pages"].values():
+        t = p.get("title")
+        while t in norm:
+            t = norm[t]
+        pages[t] = p
+    files = images({p["pageimage"].replace("_", " ") for p in pages.values() if p.get("pageimage")})
+    for ident, lo, hi, label, title, note in LANDMARKS:
+        p = pages.get(title, {})
+        img = files.get(p.get("pageimage", "").replace("_", " "))
+        url = "https://ru.wikipedia.org/wiki/" + requests.utils.quote(p.get("title", title).replace(" ", "_"))
+        index[ident] = len(entries)
+        entries.append(dict(label=label, wiki=dict(lang="ru", url=url, extract=p.get("extract") or note),
+                            architects=[], styles=[], image=img))
     Path("web/data/wiki.json").write_text(json.dumps(entries, ensure_ascii=False, separators=(",", ":")))
     pd.DataFrame({"identificatie": list(index), "wk": list(index.values())}).to_parquet("data/wiki_index.parquet")
     print(len(entries), "entries for", len(index), "buildings;", Path("web/data/wiki.json").stat().st_size // 1024, "KB")
