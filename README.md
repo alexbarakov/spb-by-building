@@ -1,7 +1,17 @@
-# Петербург, дом за домом
+# LAYRS: Петербург
 
-3D-карта всех зданий Петербурга по году постройки. Движок из ~/projects/amsterdam-by-building:
-Python-пайплайн → бинарные тайлы → three.js.
+3D-карта всех зданий Петербурга по эпохам постройки и слоям истории: Серебряный век, Петербург Пушкина и Достоевского,
+блокада, «Последний адрес», дворы-колодцы, парадные, уличный арт, старые бары и другие.
+**Карта:** https://stop-token.com/ru/lab/spb/
+
+Некоммерческий проект, сделанный из любопытства. Вдохновлён проектом Саши Богачева
+[Paris, building by building](https://paris.bogachev.fr). Движок общий с
+[LAYRS: Amsterdam](https://github.com/alexbarakov/amsterdam-by-building): Python-пайплайн → бинарные тайлы → three.js.
+
+**Хотите добавить слой?** См. [CONTRIBUTING.md](CONTRIBUTING.md).
+
+*English: a 3D map of every building in St Petersburg by era and historical context. Non-commercial; the interface
+is in Russian. Layers are welcome, see CONTRIBUTING.md.*
 
 ## Сборка
 
@@ -33,3 +43,9 @@ python3 -m http.server 8643 --directory web
   «How old is this house» по СПб (disk.yandex.ru/d/-zPLMeUyhtZQow, ODbL, 55 тыс. зданий с годом);
   ТЭП МКД (data.gov.spb.ru, поле комнат в коммуналках); ОКН КГИОП (data.gov.spb.ru); ЕГРОКН (opendata.mkrf.ru).
 - Выгрузка BBBike покрывает основную часть города; Кронштадт, Петергоф, Пушкин, Колпино вне её.
+
+## Лицензия
+
+Код — MIT (см. [LICENSE](LICENSE)). Данные остаются под лицензиями источников: OSM и «How old is this house» — ODbL,
+ГИС ЖКХ из дампа «Если быть точным» — CC BY 4.0, Wikidata — CC0, Википедия — CC BY-SA, фото Wikimedia Commons — каждое
+под своей лицензией, указанной в приложении.

@@ -1,7 +1,7 @@
 [project]
 name = "amsterdam-pipeline"
 version = "0.1.0"
-description = "Add your description here"
+description = "LAYRS: Петербург — the data pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -18,9 +18,5 @@ dependencies = [
     "tqdm>=4.70.1",
 ]
 
-[project.scripts]
-amsterdam-pipeline = "amsterdam_pipeline:main"
-
-[build-system]
-requires = ["uv_build>=0.12.20,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
