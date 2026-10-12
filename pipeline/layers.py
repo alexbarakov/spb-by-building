@@ -145,8 +145,7 @@ def foreign():
 
 
 FAITHS = [
-    ("orthodox", "Православные", r"orthodox"),
-    ("oldbel", "Старообрядческие", r"old_believers"),
+    ("orthodox", "Православные и старообрядческие", r"orthodox|old_believers"),
     ("western", "Лютеранские, католические, армянская", r"lutheran|catholic|armenian"),
     ("other", "Мечеть, синагога, дацан", r"muslim|jewish|buddhist"),
 ]
@@ -823,3 +822,34 @@ def paradnye():
 )
 def bars():
     return places(BARS)
+
+
+
+@layer(
+    id="mine", section="Люди и события", title="Мои места", era="Сейчас",
+    text=("Личный список автора карты — «MY SPB: places to drink, eat and flex»: кофейни, бары, рестораны и места, "
+          "куда стоит зайти. Восемьдесят адресов, проверенных ногами."),
+    caveat="Из списка в Google Maps; здание в пределах 25 м от точки места.",
+    source=("Список в Google Maps", "https://maps.app.goo.gl/6rnSaA8Mrpx8tVMk6"),
+    groups=[("mine", "Из списка автора")],
+)
+def mine():
+    from urllib.parse import quote
+    d = json.load(open("data/raw/my_spb.json"))
+    px, py = TO_CRS.transform([x["lon"] for x in d], [x["lat"] for x in d])
+    g = gpd.GeoDataFrame({"name": [x["note"] if x["name"][0].isdigit() or x["name"].startswith(("Ulitsa", "Gorokhovaya", "Sadovaya")) else x["name"] for x in d],
+                          "note": [x["note"] for x in d], "lat": [x["lat"] for x in d], "lon": [x["lon"] for x in d]},
+                         geometry=gpd.points_from_xy(px, py), crs=CRS)
+    j = attach_points(buildings(), g, 25)
+    members, notes = {}, {}
+    for ident, grp in j.groupby("identificatie"):
+        members[ident] = "mine"
+        names = []
+        for _, r in grp.iterrows():
+            extra = f" — {r.note}" if r.note and r.note != r["name"] else ""
+            names.append(f"{r['name']}{extra}")
+        r = grp.iloc[0]
+        notes[ident] = dict(story="Из списка автора: " + "; ".join(dict.fromkeys(names)) + ".",
+                            source=f"https://www.google.com/maps/search/?api=1&query={quote(str(r['name']))}%20{r.lat},{r.lon}",
+                            name=str(r["name"]), at=centre(ident))
+    return members, notes
