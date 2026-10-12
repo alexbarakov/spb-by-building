@@ -522,7 +522,7 @@ const totals = periods.map(() => 0);
 for (const v of Object.values(config.histogram)) v.forEach((n, i) => totals[i] += n);
 const fmt = n => n.toLocaleString('ru');
 let activeLayer = null;
-const SECTION_ORDER = ['Люди и события', 'Архитектура', 'Империя', 'Советский город', 'Память'];
+const SECTION_ORDER = ['Люди и события', 'Город', 'Архитектура', 'Империя', 'Советский город', 'Память'];
 const groupOn = {};
 
 function renderPanel() {

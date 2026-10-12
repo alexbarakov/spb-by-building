@@ -4,8 +4,11 @@ A layer has one or more groups; every group takes one bit of a 64-bit mask per b
 Each source function returns {building identificatie: group key}. Layers are listed in historical order.
 Sources: Wikidata (CC0) and OpenStreetMap (ODbL).
 """
+import json
 import re
 from functools import cache
+
+import shapely
 
 import geopandas as gpd
 import numpy as np
@@ -135,7 +138,7 @@ def foreign():
 
 ARCHITECTS = [
     ("trezzini", "Трезини", "Трезини"), ("rastrelli", "Растрелли", "Растрелли"), ("quarenghi", "Кваренги", "Кваренги"),
-    ("rossi", "Росси", "Росси"), ("voronikhin", "Воронихин", "Воронихин"), ("stasov", "Стасов", "Стасов"),
+    ("rossi", "Росси", "Росси"), ("stasov", "Стасов", "Стасов"),
     ("benois", "Бенуа", "Бенуа"), ("lidval", "Лидваль", "Лидваль"),
 ]
 
@@ -159,26 +162,11 @@ def architects():
     return by_items(pd.Series(keyed))
 
 
-@layer(
-    id="dohodnye", section="Империя", title="Доходные дома", era="1840–1917",
-    text=("За полвека до революции население Петербурга выросло в несколько раз, и город застроили "
-          "доходными домами: многоэтажными домами с квартирами внаём, парадными фасадами на улицу и "
-          "тесными дворами-колодцами за ними."),
-    caveat="Только доходные дома, внесённые в реестр наследия и Wikidata; на деле их в несколько раз больше.",
-    source=("Wikidata", "https://www.wikidata.org"),
-    groups=[("dohodny", "Доходный дом")],
-)
-def dohodnye():
-    w = wikidata()
-    hit = w[w.labelRu.str.contains("доходный дом", case=False, na=False)]
-    return {b: "dohodny" for b in hit.identificatie}
-
-
 FAITHS = [
-    ("orthodox", "Православные", r"orthodox"), ("oldbel", "Старообрядческие", r"old_believers"),
-    ("lutheran", "Лютеранские", r"lutheran"), ("catholic", "Католические", r"catholic"),
-    ("armenian", "Армянская", r"armenian"), ("muslim", "Мечеть", r"muslim"),
-    ("jewish", "Синагога", r"jewish"), ("buddhist", "Дацан", r"buddhist"),
+    ("orthodox", "Православные", r"orthodox"),
+    ("oldbel", "Старообрядческие", r"old_believers"),
+    ("western", "Лютеранские, католические, армянская", r"lutheran|catholic|armenian"),
+    ("other", "Мечеть, синагога, дацан", r"muslim|jewish|buddhist"),
 ]
 
 
@@ -502,6 +490,11 @@ def blockade():
             ("rebuilt", "Построено после 1941 года на месте попадания")],
 )
 def bombing():
+    return bombing_records()
+
+
+@cache
+def bombing_records():
     x = pd.read_excel("data/raw/pandan_bombing.xlsx")
     x = x[x.coordinates1.notna() & x.coordinates2.notna()].copy()
     lon = pd.to_numeric(x.coordinates1.astype(str).str.replace(",", "."), errors="coerce")
@@ -529,3 +522,170 @@ def bombing():
         more = f" И ещё записей: {len(grp) - 3}." if len(grp) > 3 else ""
         notes[ident] = dict(story="Сводка МПВО — " + " · ".join(lines) + more, source="http://projects.pandan.eusp.org/bombings")
     return members, notes
+
+
+# ---------- city fabric ----------
+
+from .s04_water import relation_polygons
+
+CENTRE = ("Центральный район", "Адмиралтейский район", "Василеостровский район", "Петроградский район")
+
+
+@cache
+def districts() -> gpd.GeoDataFrame:
+    rel = json.load(open("data/raw/districts.json"))["elements"]
+    polys = relation_polygons("data/raw/districts.json")
+    return gpd.GeoDataFrame({"name": [e["tags"]["name"] for e in rel]}, geometry=polys, crs=CRS)
+
+
+@cache
+def district_of() -> pd.Series:
+    b = buildings()
+    pts = gpd.GeoDataFrame({"identificatie": b.identificatie}, geometry=b.geometry.centroid, crs=CRS)
+    j = gpd.sjoin(pts, districts(), predicate="within")
+    return j.drop_duplicates("identificatie").set_index("identificatie")["name"]
+
+
+@layer(
+    id="courtyards", section="Город", title="Дворы-колодцы", era="1860–1917",
+    text=("Доходные дома строили на всю глубину участка, оставляя внутри узкие замкнутые дворы: свет падал в "
+          "них только сверху, а окна смотрели в стену напротив. Такие дворы-колодцы — главный образ "
+          "Петербурга Достоевского и Некрасова."),
+    caveat=("Посчитано по контурам зданий: замкнутые дворы исторического центра шириной до 25 м. "
+            "Высота стен по этажности из OpenStreetMap, у части домов она оценена."),
+    source=("OpenStreetMap, расчёт по геометрии", "https://www.openstreetmap.org"),
+    groups=[("well", "Двор-колодец: стены в полтора раза выше ширины двора"), ("closed", "Тесный замкнутый двор")],
+)
+def courtyards():
+    b = buildings()
+    d = district_of()
+    centre = b[b.identificatie.map(d).isin(CENTRE)]
+    blocks = shapely.union_all(centre.geometry.buffer(0.6).values).buffer(-0.6)
+    holes = [shapely.Polygon(r) for p in shapely.get_parts(blocks) if p.geom_type == "Polygon" for r in p.interiors]
+    holes = [h for h in holes if 20 < h.area < 3000]
+    hg = gpd.GeoDataFrame({"hole": range(len(holes))}, geometry=holes, crs=CRS)
+    ring = gpd.GeoDataFrame(hg[["hole"]], geometry=hg.buffer(1.5).difference(hg.geometry), crs=CRS)
+    j = gpd.sjoin(centre[["identificatie", "height", "geometry"]], ring, predicate="intersects")
+    members, notes = {}, {}
+    for hole, grp in j.groupby("hole"):
+        poly = holes[hole]
+        width = 2 * shapely.maximum_inscribed_circle(poly).length
+        height = float(grp.height.median())
+        ratio = height / max(width, 1)
+        if width > 25 or ratio < 1.0:
+            continue
+        kind = "well" if ratio >= 1.5 else "closed"
+        for ident in grp.identificatie:
+            if members.get(ident) != "well":
+                members[ident] = kind
+                notes[ident] = dict(story=f"Двор шириной около {width:.0f} м и площадью {poly.area:.0f} м²; "
+                                          f"стены около {height:.0f} м, в {ratio:.1f} раза выше ширины двора.")
+    return members, notes
+
+
+INDUSTRY_WORDS = r"завод|фабрик|мануфактур|цех\b|цехов|депо\b|электростанц|котельная|газгольдер|склад|пакгауз|мельниц|пивоварен|верф|арсенал"
+
+
+@layer(
+    id="industry", section="Город", title="Промышленный Петербург", era="1800–1960",
+    text=("Во второй половине XIX века Петербург стал крупнейшим промышленным городом империи. Выборгская сторона "
+          "превратилась в рабочий район: Металлический завод, завод Людвига Нобеля, Арсенал, текстильные "
+          "фабрики и казармы для рабочих. Сейчас многие корпуса стали лофтами и креативными пространствами."),
+    caveat=("Промышленные здания по разметке OpenStreetMap; Выборгская сторона — Выборгский и Калининский районы. "
+            "Памятники промышленной архитектуры — по названию в Wikidata."),
+    source=("OpenStreetMap и Wikidata", "https://www.openstreetmap.org"),
+    groups=[("heritage", "Заводы и фабрики — памятники"), ("vyborg", "Промышленные здания Выборгской стороны"),
+            ("other", "Промышленные здания других районов")],
+)
+def industry():
+    b = buildings()
+    d = district_of()
+    land = pyogrio.read_dataframe(OSM, layer="multipolygons", columns=["landuse"], where="landuse = 'industrial'").to_crs(CRS)
+    pts = gpd.GeoDataFrame({"identificatie": b.identificatie}, geometry=b.geometry.centroid, crs=CRS)
+    small = set(b[b.building.isin(["garages", "garage", "shed", "service", "roof", "kiosk", "hut", "container"])].identificatie)
+    on_industrial = set(gpd.sjoin(pts, land, predicate="within").identificatie) - small
+    typed = set(b[b.building.isin(["industrial", "warehouse", "factory", "manufacture"])].identificatie)
+    members = {}
+    for ident in typed | on_industrial:
+        members[ident] = "vyborg" if d.get(ident) in ("Выборгский район", "Калининский район") else "other"
+    w = wikidata()
+    hits = w[w.labelRu.str.contains(INDUSTRY_WORDS, case=False, na=False)]
+    notes = {}
+    for ident, label in zip(hits.identificatie, hits.labelRu):
+        members[ident] = "heritage"
+        notes[ident] = dict(name=label, story=f"{label} — объект культурного наследия.", at=centre(ident))
+    return members, notes
+
+
+OWNER_RE = re.compile(r"^(Доходный дом|Особняк|Дом|Дворец|Усадьба|Дача)\s+(.+)$", re.I)
+NOT_OWNER = re.compile(r"культуры|быта|книги|советов|радио|ветеранов|офицеров|учёных|писателей|художника|композиторов|"
+                       r"актёра|журналиста|кино|моды|пионеров|молодёжи|связи|техники|печати|работника|Раскольникова|Пиковой", re.I)
+
+
+# The words after "Дом" must be a person: initials, or a surname in the genitive.
+OWNER_NAME = re.compile(r"^(([А-ЯЁ]\.\s?){1,2}[А-ЯЁ]|[А-ЯЁ][а-яё-]+(ой|ей|а|я|ина|ова|ева|ёва|ича|ских|ского|цкого|ых|их|ера|ля|ца)\b)")
+NOT_NAME = re.compile(r"^(Санкт-Петербургск|Германск|Российск|Русск|Императорск|Общества|Товарищества|Городск)", re.I)
+
+
+@layer(
+    id="owners", section="Империя", title="Дома по именам владельцев", era="1740–1917",
+    text=("Петербург до сих пор называет дома по старым хозяевам: особняк Кшесинской, дом Мурузи, доходный дом "
+          "Толстого, дом Бенуа. Купцы, аристократы и архитекторы строили доходные дома как вложение денег и "
+          "подписывали их своими именами на фасадах."),
+    caveat="Здания, чьё название в Wikidata образовано от имени владельца; в основном объекты наследия.",
+    source=("Wikidata", "https://www.wikidata.org"),
+    groups=[("income", "Доходные дома"), ("mansion", "Особняки, дворцы, усадьбы"), ("house", "Дома")],
+)
+def owners():
+    w = wikidata()
+    members, notes = {}, {}
+    for ident, label, ru in zip(w.identificatie, w.labelRu.fillna(""), w.ru.fillna("")):
+        m = OWNER_RE.match(label)
+        if not m or NOT_OWNER.search(label) or not OWNER_NAME.match(m.group(2)) or NOT_NAME.match(m.group(2)):
+            continue
+        kind = m.group(1).lower()
+        group = "income" if kind == "доходный дом" else "house" if kind == "дом" else "mansion"
+        members[ident] = group
+        notes[ident] = dict(story=f"«{label}»." , **({"source": ru.split("|")[0]} if ru else {}))
+    return members, notes
+
+
+@layer(
+    id="postwar", section="Память", title="Разрушены и отстроены", era="1941–1960",
+    text=("За блокаду в Ленинграде были разрушены или повреждены тысячи зданий. После войны пробелы в центре "
+          "заполнили новыми домами, часто сталинскими, вписанными в старую линию застройки: такой дом среди "
+          "доходных домов XIX века почти всегда стоит на месте разрушенного."),
+    caveat=("Косвенный признак: дома 1944–1960 годов в историческом центре (Центральный, Адмиралтейский, "
+            "Василеостровский, Петроградский районы), только с известным годом; и дома после 1941 года у адресов "
+            "попаданий из сводок МПВО осени 1941-го."),
+    source=("Сводки МПВО (PANDAN, ЕУСПб), OpenStreetMap", "http://projects.pandan.eusp.org/bombings"),
+    groups=[("hit", "На месте попадания 1941 года"), ("infill", "Послевоенный дом в историческом центре")],
+)
+def postwar():
+    b = buildings()
+    d = b.identificatie.map(district_of())
+    dated = b[(b.date_flag != 5) & b.year.between(1944, 1960) & d.isin(CENTRE)]
+    members = {i: "infill" for i in dated.identificatie}
+    bomb_members, bomb_notes = bombing_records()
+    notes = {}
+    for ident, g in bomb_members.items():
+        if g == "rebuilt":
+            members[ident] = "hit"
+            notes[ident] = bomb_notes[ident]
+    return members, notes
+
+
+@layer(
+    id="communal", section="Советский город", title="Коммуналки", era="1918–наши дни",
+    text=("После 1918 года большие квартиры доходных домов «уплотнили»: в каждую комнату заселили по семье, "
+          "кухня и уборная стали общими. Так возникли петербургские коммуналки. Их расселяют с 1990-х, но в "
+          "городе их до сих пор десятки тысяч, и почти все — в дореволюционных домах центра."),
+    caveat=("Косвенный признак: многоквартирные дома, построенные до 1917 года, по реестру домов «Реформы ЖКХ». "
+            "Сведений о том, в каких квартирах сейчас коммуналки, в открытых данных нет."),
+    source=("Реформа ЖКХ (выгрузка 2016 года)", "https://github.com/kuk/analyze-reformagkh"),
+    groups=[("prerev", "Дореволюционный многоквартирный дом")],
+)
+def communal():
+    b = buildings()
+    hit = b[(b.year_src == "mkd") & (b.year <= 1917)]
+    return {i: "prerev" for i in hit.identificatie}
