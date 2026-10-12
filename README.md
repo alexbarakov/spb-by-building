@@ -22,6 +22,7 @@ uv run python -m pipeline.s01_osm         # контуры, этажность, 
 uv run python -m pipeline.s02_attributes  # годы, этажность, высоты
 uv run python -m pipeline.s05_layers      # слои
 uv run python -m pipeline.s06_wiki        # фото Commons и выдержки из Википедии
+uv run python -m pipeline.s06b_facts      # «Интересные факты» из статей Википедии (после s06)
 uv run python -m pipeline.s03_tiles       # тайлы, attrs.bin, city.json
 uv run python -m pipeline.s04_water       # вода и суша
 uv run python -m pipeline.s07_labels      # подписи улиц и рек

@@ -88,8 +88,9 @@ h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, seri
 /* Building card: a white slip of paper. Follows the pointer on hover; pinned by a click, then it takes clicks.
    Hierarchy: name and year are the heading; small sentence-case headings mark the sections below. */
 .card { position: fixed; z-index: 10; pointer-events: none; background: var(--paper); border-radius: 10px;
-  width: 290px; max-height: calc(100vh - 24px); overflow-y: auto; box-shadow: 0 8px 28px rgba(30, 40, 50, .16); font-size: 13px; }
-.card.pinned { pointer-events: auto; width: 340px; }
+  width: 330px; max-height: calc(100vh - 24px); overflow-y: auto; box-shadow: 0 8px 28px rgba(30, 40, 50, .16); font-size: 13px; }
+.card.pinned { pointer-events: auto; width: 400px; }
+.card .fact { margin: 0; padding: 8px 10px; background: var(--sky); border-radius: 6px; line-height: 1.5; }
 .card-close { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border: 0; border-radius: 50%;
   background: rgba(255,255,255,.92); cursor: pointer; font-size: 18px; line-height: 1; z-index: 1; }
 .card .photo { margin: 0; }

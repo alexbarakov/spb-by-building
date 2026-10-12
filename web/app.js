@@ -457,6 +457,7 @@ function cardHtml(gid, pinned) {
         <span class="period"><i style="background:${period.color}"></i>${esc(period.label)}</span></div>
     </header>
     ${pinned && w?.wiki?.extract ? `<section><p class="extract">${esc(w.wiki.extract)}</p></section>` : ''}
+    ${w?.fact ? `<section><h4>Интересный факт</h4><p class="fact">${esc(pinned || w.fact.length < 170 ? w.fact : w.fact.slice(0, 168).trimEnd() + '…')}</p></section>` : ''}
     ${inLayers ? `<section><h4>В слоях</h4><ul class="chips">${inLayers}</ul></section>` : ''}
     <section><dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>
     <section><h4>Датировка</h4><p class="why">${dateNote(b, x)}</p></section>
