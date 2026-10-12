@@ -207,22 +207,6 @@ def faiths():
 
 
 @layer(
-    id="plaques", section="Память", title="Память на стенах", era="1941–1944 и позже",
-    text=("Стены Петербурга помнят: доски «Граждане! При артобстреле эта сторона улицы наиболее опасна», "
-          "сохранённые со времён блокады, и сотни мемориальных досок тем, кто здесь жил и работал."),
-    caveat="Таблички, нанесённые на OpenStreetMap; здание в пределах 15 м от таблички.",
-    source=("OpenStreetMap", "https://www.openstreetmap.org"),
-    groups=[("blockade", "Блокада"), ("plaque", "Мемориальная доска")],
-)
-def plaques():
-    p = osm_points(r'"memorial"=>"plaque"|блокад')
-    text = (p.name.fillna("") + " " + p.other_tags.fillna("")).str.lower()
-    p = p.assign(k=np.where(text.str.contains("блокад|артобстрел"), "blockade", "plaque"))
-    j = attach_points(buildings(), gpd.GeoDataFrame(p[["k"]], geometry=p.geometry, crs=CRS), 15)
-    return dict(zip(j.identificatie, j.k)) | {i: "blockade" for i in j[j.k == "blockade"].identificatie}
-
-
-@layer(
     id="mass", section="Советский город", title="Массовое жильё", era="1956–1990",
     text=("С 1956 года Ленинград расселял коммуналки: сначала пятиэтажками без лифта, «хрущёвками», "
           "потом панельными девяти- и двенадцатиэтажками новых районов. За тридцать лет так переехала "
@@ -242,24 +226,306 @@ def mass():
 HERITAGE = [
     ("federal", "Федерального значения", "федерального значения"),
     ("regional", "Регионального значения", "регионального значения"),
-    ("revealed", "Выявленные", "выявленный"),
+    ("revealed", "Выявленные объекты", "выявленный"),
+    ("valuable", "Исторически ценные градоформирующие", "градоформирующий"),
+    ("signs", "С признаками объекта наследия", "обладающий признаками"),
 ]
 
 
 @layer(
-    id="heritage", section="Память", title="Охраняемое наследие", era="Все эпохи",
-    text=("Объекты культурного наследия: федеральные охраняет государство, региональные — город; "
-          "выявленные ждут решения о включении в реестр."),
-    caveat="Объекты, у которых в Wikidata есть номер реестра ЕГРОКН и координаты.",
+    id="heritage", section="Память", title="Уровень охраны наследия", era="Все эпохи",
+    text=("Закон делит наследие по уровню охраны. Объекты федерального значения охраняет государство, "
+          "регионального — Петербург. Выявленные объекты уже охраняются, но ещё ждут решения о включении в реестр. "
+          "Исторически ценные градоформирующие здания — городская категория для рядовой застройки, которая "
+          "держит облик центра; их нельзя снести, но можно перестроить внутри."),
+    caveat="Объекты, у которых в Wikidata указан статус охраны и есть координаты. Полный реестр ЕГРОКН подключится отдельно.",
     source=("Wikidata, ЕГРОКН", "https://www.wikidata.org"),
     groups=[(k, label) for k, label, _ in HERITAGE],
 )
 def heritage():
     w = wikidata()
+    rank = {k: i for i, (k, _, _) in enumerate(HERITAGE)}
     keyed = {}
     for item, h in zip(w.i, w.heritageLabel):
         for k, _, needle in HERITAGE:
-            if h and needle in h:
+            if h and needle in h and rank[k] < rank.get(keyed.get(item), 99):
                 keyed[item] = k
-                break
     return by_items(pd.Series(keyed))
+
+
+# ---------- people, places and events (notes carry the story shown in the building card) ----------
+
+import json
+import time
+from pathlib import Path
+
+import requests
+
+from .city import ORIGIN, UA
+from .curated import DOSTOEVSKY, PUSHKIN, SILVER
+
+GEOCODE_ALT = {
+    ("набережная реки Фонтанки", "185"): "185, набережная реки Фонтанки, Санкт-Петербург",
+    ("Кузнечный переулок", "5/2"): "музей Достоевского Кузнечный",
+    ("набережная канала Грибоедова", "104"): "Средняя Подьяческая улица 15, Санкт-Петербург",
+    ("набережная канала Грибоедова", "73"): "набережная канала Грибоедова 73, Санкт-Петербург",
+    ("площадь Искусств", "5"): "Итальянская улица 4, Санкт-Петербург",
+    ("Марсово поле", "7"): "Марсово поле 7, Санкт-Петербург",
+    ("Невский проспект", "15"): "Невский проспект 15, Санкт-Петербург",
+}
+
+
+def geocode(query: str):
+    cache_path = Path("data/raw/geocode.json")
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    if query not in cache:
+        r = requests.get("https://nominatim.openstreetmap.org/search", headers=UA, timeout=30,
+                         params={"q": query, "format": "json", "limit": 1, "viewbox": "30.0,60.1,30.7,59.75", "bounded": 1}).json()
+        time.sleep(1.1)
+        cache[query] = [float(r[0]["lon"]), float(r[0]["lat"])] if r else None
+        cache_path.write_text(json.dumps(cache, ensure_ascii=False))
+    return cache[query]
+
+
+def building_at_address(street: str, number: str) -> list[str]:
+    b = buildings()
+    hit = b[(b["addr:street"] == street) & (b["addr:housenumber"] == number)]
+    if len(hit):
+        return list(hit.identificatie)
+    q = GEOCODE_ALT.get((street, number))
+    ll = geocode(q) if q else None
+    if not ll:
+        print("  not found:", street, number)
+        return []
+    x, y = TO_CRS.transform(*ll)
+    pt = gpd.GeoDataFrame({"k": [0]}, geometry=gpd.points_from_xy([x], [y]), crs=CRS)
+    j = attach_points(b, pt, 25)
+    return list(j.identificatie)
+
+
+def centre(ident: str) -> list[float]:
+    g = buildings().set_index("identificatie").geometry[ident].centroid
+    return [round(g.x - ORIGIN[0], 1), round(-(g.y - ORIGIN[1]), 1)]
+
+
+def curated(entries) -> tuple[dict, dict]:
+    members, notes = {}, {}
+    for street, number, group, name, story, query in entries:
+        ids = building_at_address(street, number)
+        for k, ident in enumerate(ids):
+            members[ident] = group
+            notes[ident] = dict(story=story, source=f"https://ru.wikipedia.org/w/index.php?search={requests.utils.quote(query)}",
+                                **(dict(name=name, at=centre(ident)) if k == 0 else {}))
+    return members, notes
+
+
+@cache
+def plaques() -> gpd.GeoDataFrame:
+    """Plaques with their buildings and the person each names."""
+    p = pd.read_csv("data/raw/plaques.csv")
+    x, y = TO_CRS.transform(p.lon.values, p.lat.values)
+    g = gpd.GeoDataFrame(p, geometry=gpd.points_from_xy(x, y), crs=CRS)
+    j = attach_points(buildings(), g, 15)
+    people = pd.read_csv("data/raw/plaque_people.csv").drop_duplicates("p").set_index("p")
+    j["person"] = j.subject.fillna("").str.split(";").str[0]
+    for col in ("label", "born", "died", "occupations", "movements"):
+        j[col] = j.person.map(people[col]) if len(people) else None
+    return j
+
+
+def plaque_text(r) -> str:
+    text = r.inscription if isinstance(r.inscription, str) and r.inscription.strip() else r["name"]
+    return str(text).strip() if isinstance(text, str) else "Мемориальная доска"
+
+
+def plaque_source(r):
+    w = r.wikipedia
+    if isinstance(w, str) and ":" in w:
+        lang, title = w.split(":", 1)
+        return f"https://{lang}.wikipedia.org/wiki/{requests.utils.quote(title.replace(' ', '_'))}"
+    return f"https://www.wikidata.org/wiki/{r.person}" if isinstance(r.person, str) and r.person else None
+
+
+def plaque_notes(rows: pd.DataFrame) -> dict:
+    notes = {}
+    for ident, grp in rows.groupby("identificatie"):
+        texts = [plaque_text(r) for _, r in grp.iterrows()]
+        src = next((s for s in (plaque_source(r) for _, r in grp.iterrows()) if s), None)
+        notes[ident] = dict(story="Доска: «" + "» · «".join(dict.fromkeys(texts)) + "»", **({"source": src} if src else {}))
+    return notes
+
+
+def people_with(pattern: str, column="label") -> pd.DataFrame:
+    j = plaques()
+    text = (j.inscription.fillna("") + " " + j["name"].fillna("") + " " + j[column].fillna("")).str.lower()
+    return j[text.str.contains(pattern)]
+
+
+def person_layer(curated_entries, pattern):
+    members, notes = curated(curated_entries)
+    hits = people_with(pattern)
+    for ident, n in plaque_notes(hits).items():
+        members.setdefault(ident, "plaque")
+        if ident in notes:
+            notes[ident]["story"] += " " + n["story"]
+        else:
+            notes[ident] = n
+    return members, notes
+
+
+@layer(
+    id="pushkin", section="Люди и события", title="Пушкинский Петербург", era="1817–1837",
+    text=("Пушкин прожил в Петербурге большую часть взрослой жизни и ни разу не имел здесь своего дома: "
+          "он снимал квартиры, переезжая почти каждый год. Последняя, на Мойке, стала музеем."),
+    caveat="Дома с документированной историей и мемориальные доски из OpenStreetMap.",
+    source=("Википедия", "https://ru.wikipedia.org/wiki/Пушкин_в_Петербурге"),
+    groups=[("home", "Здесь жил"), ("story", "Связанные истории"), ("plaque", "Мемориальная доска")],
+)
+def pushkin():
+    return person_layer(PUSHKIN, "пушкин")
+
+
+@layer(
+    id="dostoevsky", section="Люди и события", title="Петербург Достоевского", era="1838–1881",
+    text=("Достоевский сменил в Петербурге около двадцати квартир и почти всегда выбирал угловые дома. "
+          "Его романы привязаны к реальным адресам у Сенной площади, и по ним до сих пор водят экскурсии."),
+    caveat="Дома героев романа определены исследователями по описаниям в тексте.",
+    source=("Википедия", "https://ru.wikipedia.org/wiki/Петербург_Достоевского"),
+    groups=[("home", "Здесь жил"), ("novel", "Дома героев «Преступления и наказания»"), ("plaque", "Мемориальная доска")],
+)
+def dostoevsky():
+    return person_layer(DOSTOEVSKY, "достоевск")
+
+
+SILVER_MOVES = ("символизм", "акмеизм", "футуризм", "модерн", "модернизм", "русский авангард", "имажинизм")
+CREATIVE = ("поэт", "писатель", "прозаик", "драматург", "художник", "композитор", "актёр", "актриса",
+            "философ", "литературный критик", "артист балета", "переводчик", "режиссёр")
+
+
+@layer(
+    id="silver", section="Люди и события", title="Серебряный век", era="1890–1922",
+    text=("Четверть века перед революцией Петербург был столицей русского модернизма: символисты и акмеисты "
+          "собирались на «Башне» Вячеслава Иванова, читали в подвале «Бродячей собаки», спорили в салоне "
+          "Мережковских. После 1917 года многие из них эмигрировали, погибли или замолчали."),
+    caveat=("Места Серебряного века и мемориальные доски его поэтов, писателей, художников и музыкантов: "
+            "людей творческих профессий, родившихся в 1855–1900 годах, по Wikidata."),
+    source=("Википедия", "https://ru.wikipedia.org/wiki/Серебряный_век_русской_поэзии"),
+    groups=[("venue", "Салоны и кабаре"), ("home", "Здесь жил"), ("plaque", "Мемориальная доска")],
+)
+def silver():
+    members, notes = curated(SILVER)
+    j = plaques()
+    occ = j.occupations.fillna("").str.lower()
+    mov = j.movements.fillna("").str.lower()
+    creative = occ.apply(lambda o: any(c in o for c in CREATIVE))
+    era = pd.to_numeric(j.born, errors="coerce").between(1855, 1900) & (pd.to_numeric(j.died, errors="coerce") >= 1900)
+    hits = j[(creative & era) | mov.apply(lambda m: any(x in m for x in SILVER_MOVES))]
+    for ident, n in plaque_notes(hits).items():
+        members.setdefault(ident, "plaque")
+        notes.setdefault(ident, n)
+    return members, notes
+
+
+OCCUPATIONS = [
+    ("literature", "Писатели и поэты", ("писатель", "поэт", "прозаик", "драматург", "романист", "литературный критик")),
+    ("science", "Учёные и инженеры", ("физик", "химик", "математик", "учёный", "инженер", "изобретатель", "биолог",
+                                      "геолог", "физиолог", "астроном", "врач", "путешественник")),
+    ("music", "Музыка, театр, кино", ("композитор", "дирижёр", "пианист", "певец", "певица", "актёр", "актриса",
+                                      "артист балета", "кинорежиссёр", "театральный режиссёр")),
+    ("art", "Художники и архитекторы", ("художник", "скульптор", "архитектор", "художник-график")),
+    ("military", "Военные и полярники", ("военный", "военачальник", "офицер", "адмирал", "лётчик", "военнослужащий")),
+]
+
+
+@layer(
+    id="people", section="Люди и события", title="Здесь жили", era="1800–2000",
+    text=("Мемориальные доски Петербурга — каталог тех, кто жил и работал в городе: писатели, учёные, "
+          "музыканты, художники, полярники. Нажмите на дом, чтобы прочитать надпись."),
+    caveat="Доски, нанесённые на OpenStreetMap, с человеком из Wikidata; профессия по первой подходящей в Wikidata.",
+    source=("OpenStreetMap и Wikidata", "https://www.openstreetmap.org"),
+    groups=[(k, label) for k, label, _ in OCCUPATIONS],
+)
+def people():
+    j = plaques()
+    members = {}
+    for ident, occ in zip(j.identificatie, j.occupations.fillna("").str.lower()):
+        for k, _, words in OCCUPATIONS:
+            if any(w in occ for w in words):
+                members.setdefault(ident, k)
+                break
+    return members, plaque_notes(j[j.identificatie.isin(members)])
+
+
+@layer(
+    id="revolution", section="Люди и события", title="Три революции", era="1905–1917",
+    text=("Петербург — город трёх революций: 1905 года, Февральской и Октябрьской 1917-го. Советский Ленинград "
+          "отметил досками сотни адресов: где собирались подпольщики, где выступал и скрывался Ленин."),
+    caveat="Доски, в надписи которых упомянуты революция или Ленин.",
+    source=("OpenStreetMap", "https://www.openstreetmap.org"),
+    groups=[("lenin", "Ленин"), ("rev", "Революционное движение")],
+)
+def revolution():
+    j = plaques()
+    text = (j.inscription.fillna("") + " " + j["name"].fillna("")).str.lower()
+    lenin = j[text.str.contains("ленин") & ~text.str.contains("ленинград")]
+    rev = j[text.str.contains("революц|большевик|1905|рсдрп|красной гвард|стачк")]
+    members = {i: "rev" for i in rev.identificatie} | {i: "lenin" for i in lenin.identificatie}
+    return members, plaque_notes(j[j.identificatie.isin(members)])
+
+
+@layer(
+    id="blockade", section="Память", title="Блокада", era="1941–1944",
+    text=("872 дня блокады. Предупреждения «Граждане! При артобстреле эта сторона улицы наиболее опасна» "
+          "сохраняют на стенах как память; доски отмечают госпитали, штабы и дома, где работали в осаду."),
+    caveat="Таблички и доски из OpenStreetMap, связанные с блокадой.",
+    source=("Википедия", "https://ru.wikipedia.org/wiki/Блокада_Ленинграда"),
+    groups=[("blockade", "Блокадные надписи и доски")],
+)
+def blockade():
+    p = osm_points(r"блокад|артобстрел")
+    j = attach_points(buildings(), gpd.GeoDataFrame({"k": ["blockade"] * len(p), "name": p.name.values,
+                                                     "inscription": p.other_tags.str.extract(r'"inscription"=>"([^"]*)"')[0].values,
+                                                     "wikipedia": None, "person": None},
+                                                    geometry=p.geometry.values, crs=CRS), 15)
+    return {i: "blockade" for i in j.identificatie}, plaque_notes(j)
+
+
+@layer(
+    id="bombing", section="Память", title="Бомбы и снаряды, осень 1941", era="Сентябрь–октябрь 1941",
+    text=("Осенью 1941 года штаб МПВО записывал каждое попадание: адрес, число бомб и снарядов, ущерб, "
+          "убитых и раненых. Историк Андрей Рябков и проект PANDAN Европейского университета оцифровали "
+          "сводки первых двух месяцев блокады."),
+    caveat=("Здание в пределах 20 м от геокодированного адреса сводки; часть адресов привязана к улице, а не к дому. "
+            "Только сентябрь–октябрь 1941 года."),
+    source=("PANDAN, ЕУСПб: «Бомбардировки Ленинграда»", "http://projects.pandan.eusp.org/bombings"),
+    groups=[("fab", "Фугасные бомбы"), ("zab", "Зажигательные бомбы"), ("shell", "Артиллерийские снаряды"),
+            ("rebuilt", "Построено после 1941 года на месте попадания")],
+)
+def bombing():
+    x = pd.read_excel("data/raw/pandan_bombing.xlsx")
+    x = x[x.coordinates1.notna() & x.coordinates2.notna()].copy()
+    lon = pd.to_numeric(x.coordinates1.astype(str).str.replace(",", "."), errors="coerce")
+    lat = pd.to_numeric(x.coordinates2.astype(str).str.replace(",", "."), errors="coerce")
+    x = x[lon.notna() & lat.notna()]
+    lon, lat = lon[x.index], lat[x.index]
+    num = lambda c: pd.to_numeric(x[c], errors="coerce").fillna(0)
+    x["kind"] = np.where(num("ФАБ") > 0, "fab", np.where(num("ЗАБ") > 0, "zab", "shell"))
+    px, py = TO_CRS.transform(lon.values, lat.values)
+    g = gpd.GeoDataFrame(x, geometry=gpd.points_from_xy(px, py), crs=CRS)
+    j = attach_points(buildings(), g, 20)
+    members, notes = {}, {}
+    order = {"fab": 0, "shell": 1, "zab": 2}
+    b = buildings().set_index("identificatie")
+    for ident, grp in j.groupby("identificatie"):
+        later = b.date_flag[ident] != 5 and b.year[ident] > 1941
+        members[ident] = "rebuilt" if later else min(grp.kind, key=order.get)
+        lines = []
+        for _, r in grp.head(3).iterrows():
+            what = ", ".join(f"{int(v)} {n}" for n, v in (("ФАБ", num("ФАБ")[_]), ("ЗАБ", num("ЗАБ")[_]), ("снар.", num("Снаряд")[_])) if v)
+            dmg = str(r["Причиненный ущерб"]) if isinstance(r["Причиненный ущерб"], str) else ""
+            dead, hurt = r["Убито"], r["Ранено"]
+            people = "; ".join(t for t in (f"убито {dead}" if pd.notna(dead) else "", f"ранено {hurt}" if pd.notna(hurt) else "") if t)
+            lines.append(f"{r['Дата']}, {r['Улица, дом']}: {what or 'попадание'}. {dmg} {people}".strip())
+        more = f" И ещё записей: {len(grp) - 3}." if len(grp) > 3 else ""
+        notes[ident] = dict(story="Сводка МПВО — " + " · ".join(lines) + more, source="http://projects.pandan.eusp.org/bombings")
+    return members, notes

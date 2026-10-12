@@ -414,7 +414,15 @@ function cardHtml(gid, pinned) {
     b.q && link(`https://www.wikidata.org/wiki/Q${b.q}`, 'Wikidata'),
     link(`https://www.openstreetmap.org/${b.osm}`, 'OpenStreetMap'),
   ].filter(Boolean);
-  const inLayers = b.groups.map(g => `<li><i style="background:${groupColor(g)}"></i><div><b>${esc(g.layer.title)}</b> <span>${esc(g.label)}</span></div></li>`).join('');
+  // Each layer the building is in, with its story: the plaque's words, the MPVO report, the documented history.
+  const clip = (t, n) => t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t;
+  const inLayers = b.groups.map(g => {
+    const note = g.layer.notes?.[b.id];
+    const story = note ? (pinned ? esc(note.story) : esc(clip(note.story, 160))) : '';
+    return `<li><i style="background:${groupColor(g)}"></i><div><b>${esc(g.layer.title)}</b> <span>${esc(g.label)}</span>
+      ${note?.name ? `<p class="note-name">${esc(note.name)}</p>` : ''}
+      ${story ? `<p>${story}${pinned && note.source ? ` ${link(note.source, 'Источник')}` : ''}</p>` : ''}</div></li>`;
+  }).join('');
   return `
     ${pinned ? '<button class="card-close" aria-label="Закрыть">×</button>' : ''}
     ${im ? `<figure class="photo"><img src="${esc(im.thumb)}" alt="" onerror="this.parentElement.remove()"><figcaption>Фото: ${credit}</figcaption></figure>` : ''}
@@ -428,7 +436,7 @@ function cardHtml(gid, pinned) {
     <section><dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>
     <section><h4>Датировка</h4><p class="why">${dateNote(b)}</p></section>
     ${pinned ? `<section class="sources"><h4>Подробнее</h4><p>${sources.join(', ')}</p></section>`
-      : `<p class="hint">${w?.wiki ? 'Нажмите, чтобы прочитать статью' : 'Нажмите, чтобы закрепить карточку'}</p>`}`;
+      : `<p class="hint">${w?.wiki || b.groups.some(g => g.layer.notes?.[b.id]) ? 'Нажмите, чтобы прочитать историю целиком' : 'Нажмите, чтобы закрепить карточку'}</p>`}`;
 }
 
 const card = document.getElementById('card');
@@ -514,7 +522,7 @@ const totals = periods.map(() => 0);
 for (const v of Object.values(config.histogram)) v.forEach((n, i) => totals[i] += n);
 const fmt = n => n.toLocaleString('ru');
 let activeLayer = null;
-const SECTION_ORDER = ['Архитектура', 'Империя', 'Советский город', 'Память'];
+const SECTION_ORDER = ['Люди и события', 'Архитектура', 'Империя', 'Советский город', 'Память'];
 const groupOn = {};
 
 function renderPanel() {

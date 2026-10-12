@@ -14,7 +14,8 @@ def main():
     mask = np.zeros(len(b), dtype=np.uint64)
     catalogue, bit = [], 0
     for L in LAYERS:
-        members = L["source_fn"]()
+        result = L["source_fn"]()
+        members, notes = result if isinstance(result, tuple) else (result, {})
         groups = []
         for key, label in L["groups"]:
             hit = bag.map(lambda k: members.get(k) == key).to_numpy(bool)
@@ -26,7 +27,9 @@ def main():
         assert bit <= 64, "out of layer bits"
         meta = {k: v for k, v in L.items() if k not in ("source_fn", "groups", "source")}
         meta.update(source=dict(label=L["source"][0], url=L["source"][1]), groups=groups,
-                    count=sum(g["count"] for g in groups))
+                    count=sum(g["count"] for g in groups),
+                    # keyed as the viewer names a building: the OSM way id, or minus the relation id
+                    notes={(k[1:] if k[0] == "w" else "-" + k[1:]): n for k, n in notes.items() if k in members})
         catalogue.append(meta)
         print(f'{L["id"]:20s}', {g["key"]: g["count"] for g in groups})
     out = pd.DataFrame({"identificatie": b.identificatie,
