@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Петербург, дом за домом</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=PT+Serif:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="scene" aria-label="Трёхмерная карта зданий Петербурга"></canvas>
+<div class="veil veil-top" aria-hidden="true"></div>
+<div class="veil veil-bottom" aria-hidden="true"></div>
+
+<header class="masthead">
+  <svg class="spire" viewBox="0 0 20 80" aria-hidden="true">
+    <path d="M10 0 12.2 58H7.8z" fill="currentColor"/><circle cx="10" cy="62" r="2.6" fill="currentColor"/>
+    <path d="M4 68h12v3H4zM2 74h16v6H2z" fill="currentColor"/>
+  </svg>
+  <div>
+    <h1>Петербург</h1>
+    <p class="dek">Каждое здание города по году постройки.</p>
+  </div>
+</header>
+
+<nav class="modes" aria-label="Как раскрасить город">
+  <button data-mode="0" aria-pressed="true">Эпохи</button>
+  <button data-mode="1" aria-pressed="false">Этажи</button>
+  <button data-mode="2" aria-pressed="false">Слои</button>
+</nav>
+
+<div class="tally" aria-live="polite">
+  <span id="year" class="tally-year">2025</span>
+  <span class="tally-count"><span id="count">0</span> <span id="count-word">зданий</span></span>
+</div>
+
+<aside id="panel" class="panel"></aside>
+
+<div id="card" class="card" hidden></div>
+<p class="howto">Тяните, чтобы повернуть. Правая кнопка или Shift — сдвинуть. Колесо — масштаб.</p>
+
+<footer class="timeline">
+  <button id="play" class="play" aria-label="Показать, как рос город">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path id="play-icon" d="M4 2.5v11l9-5.5z"/></svg>
+  </button>
+  <canvas id="hist" aria-label="Зданий по годам; тяните, чтобы выбрать год"></canvas>
+</footer>
+
+<div id="loading" class="loading">Строим город <span id="progress">0</span>%</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

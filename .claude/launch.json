@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "amsterdam", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8642", "--directory", "web"], "port": 8642 }
+  ]
+}
