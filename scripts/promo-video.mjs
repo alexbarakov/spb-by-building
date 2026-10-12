@@ -92,11 +92,11 @@ await click('.layer[data-id="silver"]');
 await page.waitForTimeout(1000);
 
 // 3. a building's card
-await page.evaluate(() => window.__dbg.flyTo(3538.8, -685.2, () => {})); // Башня Вячеслава Иванова
+await page.evaluate(() => window.__dbg.flyTo(1896.0, -306.1, () => {})); // Дом Мурузи
 await page.waitForTimeout(1450);
-// a real click on the Tower pins its card: find its pixel near the centre with the picking pass
+// a real click on the Muruzi House pins its card: find its pixel near the centre with the picking pass
 const [cx, cy] = await page.evaluate(([w, h]) => {
-  const d = window.__dbg, target = d.gidOf("-1574790");
+  const d = window.__dbg, target = d.gidOf("-946930");
   for (let r = 0; r < 260; r += 6)
     for (let a = 0; a < 6.283; a += 0.35) {
       const x = Math.round(w / 2 + r * Math.cos(a)), y = Math.round(h / 2 + r * Math.sin(a));
@@ -106,7 +106,7 @@ const [cx, cy] = await page.evaluate(([w, h]) => {
 }, [W, H]);
 await page.mouse.move(cx, cy, { steps: 14 });
 await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up();
-await page.waitForTimeout(1700);
+await page.waitForTimeout(2500); // long enough to see the photo and read the name
 
 // 4. close the card, back to the list, a second context layer over the whole city
 await page.keyboard.press("Escape");
