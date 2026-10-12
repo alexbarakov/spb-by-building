@@ -527,12 +527,12 @@ function gidOf(bag) {
   return bagIndex.get(bag) ?? -1;
 }
 let flight = null;
-function flyTo(x, z, done) {
+function flyTo(x, z, done, distance = 520) {
   const dir = camera.position.clone().sub(controls.target).normalize();
   if (dir.y < 0.45) { dir.y = 0.45; dir.normalize(); }
   const target = new THREE.Vector3(x, 0, z);
   flight = { t0: performance.now(), dur: 1400, fromT: controls.target.clone(), toT: target,
-    fromP: camera.position.clone(), toP: target.clone().add(dir.multiplyScalar(520)), done };
+    fromP: camera.position.clone(), toP: target.clone().add(dir.multiplyScalar(distance)), done };
 }
 function stepFlight(now) {
   if (!flight) return;
@@ -763,7 +763,7 @@ function moveHandle(x) {
 let playing = false, playT0 = 0, playStart = 0;
 const playBtn = document.getElementById('play');
 const playIcon = document.getElementById('play-icon');
-const DURATION = 30000;
+const DURATION = (+new URLSearchParams(location.search).get('film') || 30) * 1000; // ?film=6 for a short film
 function playYear(t) {
   const k = 0.35; // share of time spent before 1850
   return t < k ? T0 + (1850 - T0) * (t / k) : 1850 + (config.yearMax - 1850) * ((t - k) / (1 - k));
@@ -840,4 +840,4 @@ renderer.setAnimationLoop(now => {
 });
 
 
-window.__dbg = { pick, uniforms, camera, controls, setLayer, layers, pinCard, showCard, building, labelGroup, labels };
+window.__dbg = { pick, uniforms, camera, controls, setLayer, layers, pinCard, showCard, building, labelGroup, labels, flyTo, startPlay, gidOf };
