@@ -116,9 +116,9 @@ NATIONS = [
                          "Italy", "Kingdom of Italy", "Duchy of Milan", "Republic of Genoa", "Kingdom of Sardinia")),
     ("swiss", "Швейцария", ("Switzerland", "Old Swiss Confederacy")),
     ("france", "Франция", ("France", "Kingdom of France", "French First Republic")),
-    ("german", "Германия", ("Germany", "Kingdom of Prussia", "Holy Roman Empire", "German Empire", "Electorate of Saxony",
-                            "Kingdom of Saxony", "Kingdom of Bavaria", "Kingdom of Württemberg")),
-    ("nordic", "Швеция и Финляндия", ("Sweden", "Grand Duchy of Finland", "Finland")),
+    ("german", "Германия и Скандинавия", ("Germany", "Kingdom of Prussia", "Holy Roman Empire", "German Empire",
+                                          "Electorate of Saxony", "Kingdom of Saxony", "Kingdom of Bavaria",
+                                          "Kingdom of Württemberg", "Sweden", "Grand Duchy of Finland", "Finland")),
 ]
 
 
@@ -269,9 +269,12 @@ def geocode(query: str):
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     if query not in cache:
         r = requests.get("https://nominatim.openstreetmap.org/search", headers=UA, timeout=30,
-                         params={"q": query, "format": "json", "limit": 1, "viewbox": "30.0,60.1,30.7,59.75", "bounded": 1}).json()
+                         params={"q": query, "format": "json", "limit": 1, "viewbox": "30.0,60.1,30.7,59.75", "bounded": 1,
+                                 "addressdetails": 1}).json()
         time.sleep(1.1)
-        cache[query] = [float(r[0]["lon"]), float(r[0]["lat"])] if r else None
+        # A bare street is not a house: keep only results that name a house number or a place.
+        ok = r and (r[0].get("address", {}).get("house_number") or r[0].get("class") not in ("highway", "place"))
+        cache[query] = [float(r[0]["lon"]), float(r[0]["lat"])] if ok else None
         cache_path.write_text(json.dumps(cache, ensure_ascii=False))
     return cache[query]
 
@@ -281,8 +284,8 @@ def building_at_address(street: str, number: str) -> list[str]:
     hit = b[(b["addr:street"] == street) & (b["addr:housenumber"] == number)]
     if len(hit):
         return list(hit.identificatie)
-    q = GEOCODE_ALT.get((street, number))
-    ll = geocode(q) if q else None
+    q = GEOCODE_ALT.get((street, number)) or f"{number}, {street}, Санкт-Петербург"
+    ll = geocode(q)
     if not ll:
         print("  not found:", street, number)
         return []
@@ -764,3 +767,59 @@ def streetart():
         notes[ident] = dict(story=", ".join(bits) + ".",
                             **({"source": f"https://www.wikidata.org/wiki/{r.wd}"} if isinstance(r.wd, str) else {}))
     return members, notes
+
+
+
+from .curated_places import BARS, EGGS, PARADNYE
+
+
+def places(entries) -> tuple[dict, dict]:
+    members, notes = {}, {}
+    for street, number, group, name, story, source in entries:
+        ids = building_at_address(street, number)
+        for k, ident in enumerate(ids[:1]):
+            members.setdefault(ident, group)
+            note = dict(story=story, source=source, name=name, at=centre(ident))
+            if ident in notes:
+                notes[ident]["story"] += f" · {name}: {story}"
+            else:
+                notes[ident] = note
+    return members, notes
+
+
+@layer(
+    id="eggs", section="Город", title="Пасхалки", era="1850–наши дни",
+    text=("Петербург любит прятать шутки на виду: бронзовые коты на карнизах, нос майора Ковалёва на углу Вознесенского, "
+          "совы и драконы в лепнине, двор размером с лифт, где загадывают желания. Ищите их, задрав голову."),
+    caveat="Собрано по городским СМИ и путеводителям; у каждой пасхалки ссылка на источник.",
+    source=("«Собака.ru», «Город+», KudaGo, peterburg.center", "https://www.sobaka.ru/city/city/117534"),
+    groups=[("facade", "На фасадах"), ("legend", "Дворы, лестницы и легенды")],
+)
+def eggs():
+    return places(EGGS)
+
+
+@layer(
+    id="paradnye", section="Город", title="Парадные", era="1860–1917",
+    text=("Парадные доходных домов строили, чтобы впечатлить будущих жильцов: витражи, камины, кариатиды, винтовые "
+          "лестницы под стеклянными куполами. Многие сохранились; часть открыта, в другие пускают по договорённости "
+          "с жильцами — уважайте их покой."),
+    caveat="По подборкам spbmuzei.ru, Т—Ж и путеводителей; условия входа меняются.",
+    source=("spbmuzei.ru: самые красивые парадные", "https://www.spbmuzei.ru/top-samyh-krasivyh-paradnyh-sankt-peterburga"),
+    groups=[("open", "Можно зайти (иногда платно)"), ("closed", "По договорённости с жильцами")],
+)
+def paradnye():
+    return places([(st, n, "open" if g in ("open", "paid") else "closed", nm, story, src) for st, n, g, nm, story, src in PARADNYE])
+
+
+@layer(
+    id="bars", section="Город", title="Старые бары и рюмочные", era="1954–2021",
+    text=("Рюмочные, пивные и бары, которые работают пять лет и дольше: от советских полуподвалов с легендами "
+          "о Довлатове до первых ирландских пабов 1994 года и «неорюмочных» 2010-х. Отдельно — закрытые легенды."),
+    caveat=("Годы открытия по СМИ и сайтам заведений; у советских рюмочных — по преданию. "
+            "Работают ли они сейчас, стоит проверить перед визитом."),
+    source=("«Собака.ru», The Village, Афиша", "https://www.sobaka.ru/bars/trends/45968"),
+    groups=[("open", "Работают пять лет и дольше"), ("closed", "Закрытые легенды")],
+)
+def bars():
+    return places(BARS)
