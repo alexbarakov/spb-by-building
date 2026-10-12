@@ -181,12 +181,15 @@ const uniforms = {
   uSelected: { value: -1 },
   uFogColor: { value: col(SKY) },
   uFog: { value: new THREE.Vector2(9000, 26000) },
+  uNow: { value: 0 },        // seconds, for tiles dropping in as they load
+  uPlaying: { value: 0 },    // while the film plays buildings fly in rather than grow
+  uRise: { value: 0.01 },    // years a building's entrance spans; only the film widens it
 };
 
 const VERT = /* glsl */`
   in float bld;
   uniform sampler2D uAttr;
-  uniform float uYear, uYearFrom, uMode, uHover, uSelected;
+  uniform float uYear, uYearFrom, uMode, uHover, uSelected, uNow, uBorn, uPlaying, uRise;
   uniform vec3 uPalette[${periods.length}];
   uniform float uMask[${periods.length}];
   uniform int uGroupBit[${MAX_GROUPS}];
@@ -221,10 +224,24 @@ const VERT = /* glsl */`
     vGid = a.w;
     bool unknown = flag == 5;
     bool filtered = uMode < 0.5 && (unknown ? uUnknown < 0.5 : uMask[period] < 0.5);
-    if (year > uYear || (unknown && uYear < ${config.yearMax}.0) || filtered) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    float g = clamp((uYear - year + 1.0) / uRise, 0.0, 1.0);
+    g = g * g * (3.0 - 2.0 * g);
+    if (g <= 0.003 || (unknown && uYear < ${config.yearMax}.0) || filtered) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
 
+    // Entrances, only while the film plays and while tiles load: a building drops in from its own side of the
+    // sky, the same side every time (seeded by its id). Filters and scrubbing change the city at once.
     vec3 p = position;
-    p.y *= clamp((uYear - year + 1.0) / 2.0, 0.0, 1.0);
+    float seed = fract(sin(a.w * 12.9898) * 43758.5453);
+    float arrive = clamp((uNow - uBorn) / 0.9 - seed * 0.35, 0.0, 1.0);
+    float fly = 1.0 - arrive;
+    if (uPlaying > 0.5) fly = max(fly, 1.0 - g);
+    if (fly > 0.0) {
+      float e = fly * fly * fly;
+      float ang = seed * 6.2831853;
+      // positions are in decimetres: a few hundred metres sideways and up
+      p += vec3(cos(ang), 0.0, sin(ang)) * (1800.0 + 1600.0 * fract(seed * 7.13)) * e;
+      p.y += (2600.0 + 2400.0 * fract(seed * 3.71)) * e;
+    }
     vec3 c;
     if (uMode < 0.5) {
       c = unknown ? uUnknownColor : uPalette[period];
@@ -272,10 +289,10 @@ const FRAG = /* glsl */`
   }
 `;
 
-function makeMaterial(tex, pick) {
+function makeMaterial(tex, pick, born) {
   return new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    uniforms: { ...uniforms, uAttr: { value: tex } },
+    uniforms: { ...uniforms, uAttr: { value: tex }, uBorn: born },
     vertexShader: VERT,
     fragmentShader: FRAG,
     defines: pick ? { PICK: 1 } : {},
@@ -299,8 +316,9 @@ function addTile(m) {
   data.set(m.attr);
   const tex = new THREE.DataTexture(data, ATTR_W * 2, rows, THREE.RGBAFormat, THREE.FloatType);
   tex.needsUpdate = true;
-  const mesh = new THREE.Mesh(g, makeMaterial(tex, false));
-  mesh.userData = { draw: mesh.material, pick: makeMaterial(tex, true) };
+  const born = { value: performance.now() / 1000 };
+  const mesh = new THREE.Mesh(g, makeMaterial(tex, false, born));
+  mesh.userData = { draw: mesh.material, pick: makeMaterial(tex, true, born) };
   mesh.scale.setScalar(0.1);
   mesh.position.set(m.origin[0], 0, m.origin[1]);
   scene.add(mesh);
@@ -455,7 +473,7 @@ function placeCard(x, y) {
 }
 let hoverGid = -1;
 function showCard(gid, x, y) {
-  if (pinnedGid >= 0) return;
+  if (pinnedGid >= 0 || phone.matches) return;
   if (gid < 0) { card.hidden = true; hoverGid = -1; return; }
   if (gid !== hoverGid || card.hidden) {
     // Re-render only when the building changes, so the photo is not reloaded every frame.
@@ -474,6 +492,7 @@ function pinCard(gid, x, y) {
   if (gid < 0) { card.hidden = true; card.classList.remove('pinned'); return; }
   card.innerHTML = cardHtml(gid, true);
   card.classList.add('pinned');
+  if (phone.matches) setCollapsed(true);
   card.hidden = false;
   card.querySelector('.card-close').onclick = () => pinCard(-1);
   card.querySelector('img')?.addEventListener('load', () => placeCard(x, y));
@@ -524,7 +543,29 @@ function stepFlight(now) {
 }
 
 // ---------- Panel ----------
-const panel = document.getElementById('panel');
+const panelEl = document.getElementById('panel');
+const panel = document.getElementById('panel-body');
+const sheetHandle = panelEl.querySelector('.sheet-handle');
+const phone = matchMedia('(max-width: 720px)');
+// On a phone the panel is a sheet: folded to one line until opened, and folded again when a building is pinned.
+function setCollapsed(c) {
+  panelEl.classList.toggle('collapsed', c);
+  sheetHandle.setAttribute('aria-expanded', String(!c));
+  sheetHandle.textContent = c ? 'Показать легенду' : 'Скрыть легенду';
+}
+sheetHandle.onclick = () => setCollapsed(!panelEl.classList.contains('collapsed'));
+setCollapsed(phone.matches);
+phone.addEventListener('change', () => setCollapsed(phone.matches));
+
+const ICON = {
+  'Люди и события': '<circle cx="8" cy="5" r="2.6"/><path d="M3 14.5c.4-3 2.4-4.6 5-4.6s4.6 1.6 5 4.6"/>',
+  'Город': '<path d="M2 14.5h12"/><path d="M3 14.5V6h4v8.5M7 14.5V3h6v11.5"/><path d="M9 5.5h2M9 8h2M9 10.5h2"/>',
+  'Архитектура': '<path d="M2 5.5 8 2l6 3.5z"/><path d="M3.5 6v7M6.5 6v7M9.5 6v7M12.5 6v7M2 14.5h12"/>',
+  'Империя': '<path d="M3 12.5h10l1-6.5-3.5 3L8 3.5 5.5 9 2 6z"/><path d="M3 14.5h10"/>',
+  'Советский город': '<rect x="2.5" y="5" width="5" height="9.5"/><rect x="8.5" y="2" width="5" height="12.5"/><path d="M4.5 7.5h1M4.5 10h1M10.5 4.5h1M10.5 7h1M10.5 9.5h1"/>',
+  'Память': '<path d="M8 1.5c-.8 2-2.5 2.8-2.5 4.8a2.5 2.5 0 0 0 5 0C10.5 4.3 8.8 3.5 8 1.5z"/><path d="M5 14.5h6M8 9v5.5"/>',
+};
+const sectionIcon = sec => `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">${ICON[sec] || ''}</svg>`;
 const totals = periods.map(() => 0);
 for (const v of Object.values(config.histogram)) v.forEach((n, i) => totals[i] += n);
 const fmt = n => n.toLocaleString('ru');
@@ -561,14 +602,18 @@ function renderPanel() {
       <p class="note">Этажность указана в OpenStreetMap у ${fmt(config.stats.floorsTagged)} зданий; у остальных ${fmt(config.stats.floorsDefault + config.stats.floorsHeight)} она оценена по высоте или типу здания.</p>`;
   } else if (!activeLayer) {
     const sections = [...new Set(layers.map(L => L.section))].sort((a, b) => SECTION_ORDER.indexOf(a) - SECTION_ORDER.indexOf(b));
-    panel.innerHTML = sections.map(sec => `<h2 class="section">${esc(sec)}</h2><div class="layers">${layers.filter(L => L.section === sec).map(L => `
+    panel.innerHTML = `<nav class="section-nav" aria-label="Разделы">${sections.map(sec => `
+      <button data-sec="${esc(sec)}" title="${esc(sec)}" aria-label="${esc(sec)}">${sectionIcon(sec)}</button>`).join('')}</nav>` +
+      sections.map(sec => `<h2 class="section" id="sec-${sections.indexOf(sec)}">${sectionIcon(sec)}${esc(sec)}</h2><div class="layers">${layers.filter(L => L.section === sec).map(L => `
       <button class="layer" data-id="${L.id}">
         <b>${esc(L.title)}</b><span class="n">${fmt(L.count)}</span><span class="era">${esc(L.era)}</span>
       </button>`).join('')}</div>`).join('');
     panel.querySelectorAll('.layer').forEach(b => b.onclick = () => setLayer(layers.find(l => l.id === b.dataset.id)));
+    panel.querySelectorAll('.section-nav button').forEach(b => b.onclick = () =>
+      panel.querySelector(`#sec-${sections.indexOf(b.dataset.sec)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   } else {
     panel.innerHTML = `<button class="back">Все слои</button>
-      <h2 class="layer-title">${activeLayer.title}</h2><p class="layer-era">${activeLayer.era}</p>${layerDetail(activeLayer)}`;
+      <h2 class="layer-title">${sectionIcon(activeLayer.section)}${esc(activeLayer.title)}</h2><p class="layer-era">${activeLayer.era}</p>${layerDetail(activeLayer)}`;
     panel.querySelector('.back').onclick = () => setLayer(null);
     panel.querySelectorAll('.story').forEach(b => b.onclick = () => {
       const n = activeLayer.notes[b.dataset.bag];
@@ -599,6 +644,7 @@ function layerDetail(L) {
 
 function setLayer(L) {
   activeLayer = L;
+  history.replaceState(null, '', L ? `#layer=${L.id}` : location.pathname + location.search);
   const bits = Array(MAX_GROUPS).fill(-1);
   if (L) L.groups.forEach((g, i) => { if (i < MAX_GROUPS && groupOn[g.bit] !== false) bits[i] = g.bit; });
   uniforms.uGroupBit.value = bits;
@@ -689,7 +735,7 @@ function drawHist() {
   hctx.fillStyle = '#000';
   hctx.fillRect(xOf(Y) - 1, 0, 2, plotH);
   if (Yf >= T0) { hctx.fillStyle = '#5d6266'; hctx.fillRect(xOf(Yf) - 0.5, 0, 1, plotH); }
-  document.getElementById('year').textContent = Y;
+  document.getElementById('year').textContent = Math.round(Y);
   const n = visibleCount();
   document.getElementById('count').textContent = fmt(n);
   document.getElementById('count-word').textContent = plural(n, 'здание', 'здания', 'зданий');
@@ -727,12 +773,16 @@ function startPlay() {
   playT0 = 0;
   while (playT0 < 1 && playYear(playT0) < uniforms.uYear.value) playT0 += 0.001;
   playIcon.setAttribute('d', 'M4 2.5h3v11H4zM9 2.5h3v11H9z');
-  playBtn.setAttribute('aria-label', 'Pause');
+  uniforms.uPlaying.value = 1;
+  playBtn.setAttribute('aria-label', 'Пауза');
 }
 function stopPlay() {
   playing = false;
+  uniforms.uPlaying.value = 0;
+  uniforms.uRise.value = 0.01;
+  uniforms.uYear.value = Math.round(uniforms.uYear.value);
   playIcon.setAttribute('d', 'M4 2.5v11l9-5.5z');
-  playBtn.setAttribute('aria-label', "Play the city's growth");
+  playBtn.setAttribute('aria-label', 'Показать, как рос город');
 }
 playBtn.onclick = () => playing ? stopPlay() : startPlay();
 
@@ -745,7 +795,21 @@ function resize() {
   drawHist();
 }
 addEventListener('resize', resize);
-renderPanel();
+const about = document.getElementById('about');
+document.querySelector('.about-open').onclick = () => about.showModal();
+about.querySelector('.about-close').onclick = () => about.close();
+about.addEventListener('click', e => { if (e.target === about) about.close(); });
+
+// A shared link to a layer opens it: #layer=pushkin
+const fromHash = location.hash.match(/layer=([\w-]+)/)?.[1];
+const linked = fromHash && layers.find(L => L.id === fromHash);
+if (linked) {
+  uniforms.uMode.value = MODE.layers;
+  document.querySelectorAll('.modes button').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.mode === MODE.layers)));
+  setLayer(linked);
+} else {
+  renderPanel();
+}
 resize();
 document.fonts?.ready.then(drawHist);
 
@@ -753,13 +817,16 @@ let frame = 0;
 renderer.setAnimationLoop(now => {
   frame++;
   stepFlight(now);
+  uniforms.uNow.value = now / 1000;
   controls.update();
   const dist = camera.position.distanceTo(controls.target);
   uniforms.uFog.value.set(dist * 1.6, dist * 4);
   if (frame % 6 === 0) updateLabels(dist);
   if (playing) {
     const t = Math.min(1, playT0 + (now - playStart) / DURATION);
-    uniforms.uYear.value = Math.round(playYear(t));
+    uniforms.uYear.value = playYear(t);
+    // A flight lasts about 0.8 s on screen whatever the film's pace: as many years as the film covers in that time.
+    uniforms.uRise.value = Math.max(2, (playYear(Math.min(1, t + 800 / DURATION)) - playYear(t)));
     if (t >= 1) stopPlay();
     drawHist();
   }

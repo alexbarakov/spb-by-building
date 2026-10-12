@@ -126,11 +126,66 @@ h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, seri
 
 .loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); }
 
+.sheet-handle { display: none; }
+
+/* About: a reading page over the map, opened from a quiet link under the tally. */
+.about-open { position: fixed; top: calc(env(safe-area-inset-top, 0px) + var(--gutter) + 92px); right: var(--gutter);
+  border: 0; background: none; padding: 2px 0; cursor: pointer; color: var(--ink); text-decoration: underline;
+  text-decoration-color: var(--red); text-underline-offset: 3px; }
+.about { border: 0; border-radius: 12px; padding: 0; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+  box-shadow: 0 20px 60px rgba(30, 40, 50, .25); color: var(--ink); }
+.about::backdrop { background: rgba(228, 232, 234, .7); }
+.about article { padding: 28px 32px 32px; overflow-y: auto; }
+.about h2 { margin: 0 0 12px; font: 700 28px/1.1 "PT Serif", Georgia, serif; }
+.about h3 { margin: 22px 0 6px; font-size: 15px; font-weight: 700; }
+.about p, .about li { line-height: 1.6; max-width: 64ch; }
+.about ul { padding-left: 18px; margin: 6px 0 0; }
+.about li { margin-bottom: 6px; }
+.about a { color: var(--ink); text-decoration-color: var(--red); text-underline-offset: 3px; }
+.about .credit { color: var(--muted); margin-top: 0; }
+.about .author { font-weight: 600; margin-bottom: 4px; }
+.about .notice { border-left: 3px solid var(--red); padding-left: 12px; font-weight: 500; }
+.about-close { position: sticky; float: right; top: 10px; margin: 10px 10px 0 0; width: 32px; height: 32px; border: 0;
+  border-radius: 50%; background: var(--sky); cursor: pointer; font-size: 18px; }
+
+/* Section icons in the layer list, and a row of them to jump between sections. */
+.icon { width: 15px; height: 15px; flex: none; vertical-align: -2px; margin-right: 6px; }
+.section-nav { display: flex; gap: 4px; margin: 0 0 6px; flex-wrap: wrap; }
+.section-nav button { border: 0; background: var(--sky); border-radius: 6px; width: 32px; height: 30px; cursor: pointer;
+  display: grid; place-items: center; color: var(--navy); }
+.section-nav .icon { margin: 0; }
+
 @media (max-width: 720px) {
   .dek { display: none; }
-  .modes { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 128px); }
-  .panel { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 176px); max-height: 34vh; }
-  .spire { width: 12px; height: 38px; }
+  h1 { font-size: 30px; }
+  .spire { width: 12px; height: 46px; }
+  .tally-year { font-size: 30px; }
+  .tally-count { font-size: 12px; }
+  .masthead, .tally { top: calc(env(safe-area-inset-top, 0px) + 14px); }
+  .about-open { top: calc(env(safe-area-inset-top, 0px) + 64px); font-size: 13px; }
+  /* Modes: one strip above the timeline. */
+  .modes { top: auto; left: 12px; right: 12px; transform: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+    justify-content: center; }
+  .modes button { flex: 1; padding: 8px 10px; }
+  /* Panel: a sheet above the modes, folded to its handle by default. */
+  .panel { top: auto; left: 12px; right: 12px; width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 150px);
+    max-height: 48vh; padding: 0 14px 12px; }
+  .sheet-handle { display: block; width: calc(100% + 28px); margin: 0 -14px 8px; padding: 12px 14px; border: 0;
+    background: none; text-align: left; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--rule); }
+  .sheet-handle::after { content: ""; float: right; width: 8px; height: 8px; margin-top: 4px; border: solid var(--muted);
+    border-width: 0 2px 2px 0; transform: rotate(225deg); }
+  .panel.collapsed { overflow: hidden; padding-bottom: 0; }
+  .panel.collapsed .sheet-handle { margin-bottom: 0; border-bottom: 0; }
+  .panel.collapsed .sheet-handle::after { transform: rotate(45deg); margin-top: 0; }
+  .panel.collapsed #panel-body { display: none; }
+  /* Card: a sheet from the bottom edge. */
+  .card, .card.pinned { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 72vh;
+    border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .card .photo img { border-radius: 14px 14px 0 0; max-height: 190px; }
+  .timeline { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
+  .timeline canvas { height: 76px; }
+  .play { width: 40px; height: 40px; margin-bottom: 18px; }
+  .about article { padding: 20px 18px 24px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
