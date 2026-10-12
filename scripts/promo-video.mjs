@@ -17,7 +17,9 @@ const { chromium } = require("playwright");
 const ffmpeg = require("ffmpeg-static");
 
 const base = process.argv[2] || "http://localhost:8643";
-const W = 1920, H = 1080;
+// size as WxH in the third argument: 1920x1080 by default, 1080x1350 for a LinkedIn feed post
+const [W, H] = (process.argv[3] || "1920x1080").split("x").map(Number);
+const suffix = W === 1920 && H === 1080 ? "" : `-${W}x${H}`;
 const outDir = resolve("out-video");
 const tmp = join(outDir, ".spb-promo");
 rmSync(tmp, { recursive: true, force: true });
@@ -128,7 +130,7 @@ for (let j = 0; j < kept.length; j++) {
 }
 list.push(`file '${kept[kept.length - 1].file}'`);
 writeFileSync(join(tmp, "list.txt"), list.join("\n") + "\n");
-const out = join(outDir, "spb-promo.mp4");
+const out = join(outDir, `spb-promo${suffix}.mp4`);
 execFileSync(ffmpeg, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(tmp, "list.txt"),
   "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-movflags", "+faststart", out]);
 console.log(out, ((end - startAt) / 1000).toFixed(1), "s,", kept.length, "frames");
