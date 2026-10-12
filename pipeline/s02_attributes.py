@@ -1,7 +1,8 @@
 """Years, floors and heights per building.
 
 Year sources, in order of trust (date_flag in brackets):
-  monument   Wikidata item of a cultural heritage object (EGROKN id) inside the footprint or within 20 m:
+  monument   Wikivoyage list of heritage objects (CC BY-SA, register dates), point within 15 m [3]/[4];
+             else a Wikidata item of a cultural heritage object (EGROKN id) inside the footprint or within 20 m:
              to the year [3], or spread across its decade or century [4]
   hoith      "How old is this house" (Kon-Tiki maps, ODbL, Nov 2023): official address plan, housing passports,
              citywalls and OSM merged; the first year of its range [0], or spread across the range [1]
@@ -95,6 +96,20 @@ def hoith_dates(b):
     return j.drop_duplicates("identificatie").set_index("identificatie")
 
 
+def wikivoyage_dates(b):
+    from .dates_ru import parse
+    v = pd.read_csv("data/raw/wikivoyage_spb.csv", low_memory=False)
+    v = v[(v.type == "architecture") & (v.precise != "no") & v.lat.notna() & (v.status.fillna("") != "destroyed")].copy()
+    v["d"] = v.year.map(parse)
+    x, y = TO_CRS.transform(pd.to_numeric(v.long, errors="coerce").values, pd.to_numeric(v.lat, errors="coerce").values)
+    pts = gpd.GeoDataFrame(v[["d", "name", "author", "protection", "page", "wdid", "year"]], geometry=gpd.points_from_xy(x, y), crs=CRS)
+    pts = pts[pts.geometry.is_valid & ~pts.geometry.is_empty]
+    j = attach_points(b, pts, 15)
+    # Earliest dated object per building.
+    j["lo"] = j.d.map(lambda d: d[0] if d else 9999)
+    return j.sort_values("lo").drop_duplicates("identificatie").set_index("identificatie")
+
+
 def main():
     b = gpd.read_parquet("data/osm_buildings.parquet").reset_index(drop=True)
     n = len(b)
@@ -145,6 +160,18 @@ def main():
         flag[i] = MONUMENT if span == 0 else MONUMENT_APPROX
         src[i] = "monument"
     b["wikidata_item"] = b.identificatie.map(w.i)
+
+    v = wikivoyage_dates(b)
+    for i in np.where(b.identificatie.isin(v.index))[0]:
+        d = v.at[ids[i], "d"]
+        if not d:
+            continue
+        lo, hi = d
+        year[i] = lo if lo == hi else int(lo + unit(ids[i], "wv") * (hi - lo))
+        flag[i] = MONUMENT if lo == hi else MONUMENT_APPROX
+        src[i] = "monument"
+    for col in ("name", "author", "protection", "page", "wdid", "year"):
+        b[f"wv_{col}"] = b.identificatie.map(v[col])
 
     unknown = flag == UNKNOWN
     year[unknown] = 2025

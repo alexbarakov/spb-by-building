@@ -146,8 +146,11 @@ def main():
 
     # Architect, style and the citywalls page from the Kon-Tiki dataset, by building index; read lazily by the card.
     extras = {}
-    for i, (a, st, cw) in enumerate(zip(b.get("architect_hoith"), b.get("style_hoith"), b.get("citywalls"))):
-        e = {k: v for k, v in (("a", a), ("s", st), ("cw", cw)) if isinstance(v, str) and v.strip()}
+    for i, (a, st, cw, wa, wn, wp, wy) in enumerate(zip(b.get("architect_hoith"), b.get("style_hoith"), b.get("citywalls"),
+                                                     b.get("wv_author"), b.get("wv_name"), b.get("wv_page"), b.get("wv_year"))):
+        # The heritage register's author and dating win over Kon-Tiki's.
+        a = wa if isinstance(wa, str) and wa.strip() else a
+        e = {k: v for k, v in (("a", a), ("s", st), ("cw", cw), ("n", wn), ("wv", wp), ("y", wy)) if isinstance(v, str) and v.strip()}
         if "cw" in e:
             e["cw"] = e["cw"].rsplit("house", 1)[-1].split(".")[0]
         if e:

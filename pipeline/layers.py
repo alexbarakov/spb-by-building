@@ -232,11 +232,10 @@ def mass():
 
 
 HERITAGE = [
-    ("federal", "Федерального значения", "федерального значения"),
-    ("regional", "Регионального значения", "регионального значения"),
-    ("revealed", "Выявленные объекты", "выявленный"),
-    ("valuable", "Исторически ценные градоформирующие", "градоформирующий"),
-    ("signs", "С признаками объекта наследия", "обладающий признаками"),
+    ("federal", "Федерального значения", "Ф"),
+    ("regional", "Регионального значения", "Р"),
+    ("revealed", "Выявленные объекты", "В"),
+    ("valuable", "Исторически ценные градоформирующие", "Ц"),
 ]
 
 
@@ -245,20 +244,28 @@ HERITAGE = [
     text=("Закон делит наследие по уровню охраны. Объекты федерального значения охраняет государство, "
           "регионального — Петербург. Выявленные объекты уже охраняются, но ещё ждут решения о включении в реестр. "
           "Исторически ценные градоформирующие здания — городская категория для рядовой застройки, которая "
-          "держит облик центра; их нельзя снести, но можно перестроить внутри."),
-    caveat="Объекты, у которых в Wikidata указан статус охраны и есть координаты. Полный реестр ЕГРОКН подключится отдельно.",
-    source=("Wikidata, ЕГРОКН", "https://www.wikidata.org"),
+          "держит облик центра."),
+    caveat="По спискам Википутеводителя «Культурное наследие России / Санкт-Петербург», сверенным с реестром.",
+    source=("Википутеводитель, CC BY-SA", "https://ru.wikivoyage.org/wiki/Культурное_наследие_России/Санкт-Петербург"),
     groups=[(k, label) for k, label, _ in HERITAGE],
 )
 def heritage():
-    w = wikidata()
+    b = buildings()
+    code = {c: k for k, _, c in HERITAGE}
     rank = {k: i for i, (k, _, _) in enumerate(HERITAGE)}
-    keyed = {}
-    for item, h in zip(w.i, w.heritageLabel):
-        for k, _, needle in HERITAGE:
-            if h and needle in h and rank[k] < rank.get(keyed.get(item), 99):
-                keyed[item] = k
-    return by_items(pd.Series(keyed))
+    out = {}
+    for ident, p in zip(b.identificatie, b.wv_protection):
+        if isinstance(p, str) and p.strip() in code:
+            out[ident] = code[p.strip()]
+    # Wikidata fills buildings the Wikivoyage points miss.
+    w = wikidata()
+    words = {"федерального значения": "federal", "регионального значения": "regional", "выявленный": "revealed",
+             "градоформирующий": "valuable"}
+    for ident, h in zip(w.identificatie, w.heritageLabel):
+        for needle, k in words.items():
+            if h and needle in h and rank[k] < rank.get(out.get(ident), 99):
+                out[ident] = k
+    return out
 
 
 # ---------- people, places and events (notes carry the story shown in the building card) ----------
@@ -710,3 +717,36 @@ def communal():
     series = b.series.fillna("") if "series" in b else pd.Series("", index=b.index)
     hit = b[((b.year_src == "mkd") & (b.year <= 1917)) | series.str.contains("дореволюц", case=False)]
     return {i: "prerev" for i in hit.identificatie}
+
+
+
+@layer(
+    id="lastaddress", section="Память", title="Последний адрес", era="1918–1953",
+    text=("Небольшие стальные таблички с прорезью вместо фотографии ставят на дома, откуда людей забрали "
+          "в годы советского террора: одно имя, одна жизнь, один знак. Проект «Последний адрес» устанавливает "
+          "их по заявкам горожан с 2014 года; Петербург — один из главных его городов."),
+    caveat=("Адреса из базы проекта; здание в пределах 20 м от точки. В карточке — справка о человеке из базы, "
+            "по «Ленинградскому мартирологу» и другим источникам."),
+    source=("Проект «Последний адрес»", "https://www.poslednyadres.ru"),
+    groups=[("posted", "Табличка установлена"), ("planned", "Заявка, табличка готовится")],
+)
+def lastaddress():
+    d = [x for x in json.load(open("data/raw/poslednyadres.json")) if x.get("town") == "Санкт-Петербург" and x.get("Latlng")]
+    lat = [float(x["Latlng"][0]) for x in d]; lon = [float(x["Latlng"][1]) for x in d]
+    px, py = TO_CRS.transform(lon, lat)
+    g = gpd.GeoDataFrame({"title": [x.get("title", "") for x in d], "text": [x.get("text", "") for x in d],
+                          "status": [x.get("Status_order") for x in d], "link": [x.get("news_link") or "" for x in d]},
+                         geometry=gpd.points_from_xy(px, py), crs=CRS)
+    j = attach_points(buildings(), g, 20)
+    members, notes = {}, {}
+    for ident, grp in j.groupby("identificatie"):
+        members[ident] = "posted" if (grp.status == "posted").any() else "planned"
+        people = []
+        for _, r in grp.head(4).iterrows():
+            bio = re.sub(r"\s*<LF>.*$", "", str(r.text)).replace("Проживал:", "Жил:")
+            bio = bio if len(bio) < 360 else bio[:359].rsplit(" ", 1)[0] + "…"
+            people.append(f"{r.title}. {bio}")
+        more = f" И ещё {len(grp) - 4}." if len(grp) > 4 else ""
+        link = next((l for l in grp.link if l), "https://www.poslednyadres.ru")
+        notes[ident] = dict(story=" · ".join(people) + more, source=link)
+    return members, notes

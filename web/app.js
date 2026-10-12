@@ -352,9 +352,10 @@ function pick(x, y) {
 // ---------- Building lookup ----------
 const SOURCE = ['', 'реестр многоквартирных домов ГИС ЖКХ', 'OpenStreetMap', 'реестр объектов культурного наследия (Wikidata)',
   'база «How old is this house» (Кон-Тики)'];
-function dateNote(b) {
+function dateNote(b, x = {}) {
   if (b.flag === 5) return 'Год постройки неизвестен: здания нет ни в ГИС ЖКХ, ни в реестре наследия, и в OpenStreetMap дата не указана. Здание серое и появляется на карте, когда таймлайн доходит до сегодняшнего дня.';
-  if (b.flag === 4) return 'Дата из реестра наследия с точностью до десятилетия или века; на карте год разнесён по этому промежутку.';
+  if (b.flag === 4) return `Датировка по реестру наследия${x.y ? `: «${esc(x.y)}»` : ''}; на карте год разнесён по этому промежутку.`;
+  if (b.flag === 3 && x.y) return `Датировка по реестру наследия: «${esc(x.y)}».`;
   if (b.flag === 1 && b.src === 1) return 'В ГИС ЖКХ стоит 1917 год — так обычно отмечают дома, построенные до революции. Читайте как «до 1918»; на карте год разнесён по 1880–1917.';
   if (b.flag === 1) return `В источнике (${SOURCE[b.src]}) указан диапазон лет; на карте год разнесён по нему.`;
   return `Год: ${SOURCE[b.src]}.`;
@@ -416,6 +417,7 @@ function cardHtml(gid, pinned) {
   const sources = [
     w?.wiki?.url && link(w.wiki.url, w.wiki.lang === 'ru' ? 'Википедия' : 'Wikipedia (англ.)'),
     b.q && link(`https://www.wikidata.org/wiki/Q${b.q}`, 'Wikidata'),
+    x.wv && link(`https://ru.wikivoyage.org/wiki/${encodeURIComponent(x.wv.replace(/ /g, '_'))}`, 'Википутеводитель'),
     x.cw && link(`https://www.citywalls.ru/house${x.cw}.html`, 'Citywalls'),
     link(`https://www.openstreetmap.org/${b.osm}`, 'OpenStreetMap'),
   ].filter(Boolean);
@@ -432,14 +434,14 @@ function cardHtml(gid, pinned) {
     ${pinned ? '<button class="card-close" aria-label="Закрыть">×</button>' : ''}
     ${im ? `<figure class="photo"><img src="${esc(im.thumb)}" alt="" onerror="this.parentElement.remove()"><figcaption>Фото: ${credit}</figcaption></figure>` : ''}
     <header class="card-head">
-      ${w?.label ? `<h3>${esc(w.label)}</h3>` : ''}
+      ${w?.label || x.n ? `<h3>${esc(w?.label || x.n)}</h3>` : ''}
       <div class="when"><span class="y">${unknown ? '—' : `${b.flag && b.flag !== 3 ? 'ок. ' : ''}${b.year}`}</span>
         <span class="period"><i style="background:${period.color}"></i>${esc(period.label)}</span></div>
     </header>
     ${pinned && w?.wiki?.extract ? `<section><p class="extract">${esc(w.wiki.extract)}</p></section>` : ''}
     ${inLayers ? `<section><h4>В слоях</h4><ul class="chips">${inLayers}</ul></section>` : ''}
     <section><dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>
-    <section><h4>Датировка</h4><p class="why">${dateNote(b)}</p></section>
+    <section><h4>Датировка</h4><p class="why">${dateNote(b, x)}</p></section>
     ${pinned ? `<section class="sources"><h4>Подробнее</h4><p>${sources.join(', ')}</p></section>`
       : `<p class="hint">${w?.wiki || b.groups.some(g => g.layer.notes?.[b.id]) ? 'Нажмите, чтобы прочитать историю целиком' : 'Нажмите, чтобы закрепить карточку'}</p>`}`;
 }
