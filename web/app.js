@@ -735,7 +735,8 @@ function drawHist() {
   hctx.fillStyle = '#000';
   hctx.fillRect(xOf(Y) - 1, 0, 2, plotH);
   if (Yf >= T0) { hctx.fillStyle = '#5d6266'; hctx.fillRect(xOf(Yf) - 0.5, 0, 1, plotH); }
-  document.getElementById('year').textContent = Math.round(Y);
+  // at the end of the timeline the map shows the city as it stands, not a year that reads like a date
+  document.getElementById('year').textContent = Y >= config.yearMax ? 'Сегодня' : Math.round(Y);
   const n = visibleCount();
   document.getElementById('count').textContent = fmt(n);
   document.getElementById('count-word').textContent = plural(n, 'здание', 'здания', 'зданий');
