@@ -194,20 +194,32 @@ def faiths():
     return out
 
 
+KHRUSH_SERIES = re.compile(r"хрущ|1-528|1-335|1-507|1ЛГ-507|ОД-|Г-\d|ГИ\b|1-506|КГ-", re.I)
+PANEL_SERIES = re.compile(r"\b137\b|504|600|602|606|\b121\b|1ЛГ-6", re.I)
+
+
 @layer(
     id="mass", section="Советский город", title="Массовое жильё", era="1956–1990",
-    text=("С 1956 года Ленинград расселял коммуналки: сначала пятиэтажками без лифта, «хрущёвками», "
-          "потом панельными девяти- и двенадцатиэтажками новых районов. За тридцать лет так переехала "
-          "большая часть горожан."),
-    caveat="Определено по году постройки и этажности, а не по типовой серии; только дома с известным годом.",
-    source=("Реформа ЖКХ, OpenStreetMap", "https://www.openstreetmap.org"),
-    groups=[("khrush", "Пятиэтажки 1956–1970"), ("panel", "Высотные дома 1971–1990")],
+    text=("С 1956 года Ленинград расселял коммуналки: сначала пятиэтажками без лифта, «хрущёвками» серий "
+          "1-528КП, 1-335, ОД и кирпичных серий Г, потом панельными домами 137-й, 504-й, 600-й и 606-й серий "
+          "в новых районах. За тридцать лет так переехала большая часть горожан."),
+    caveat=("Серия дома по ГИС ЖКХ; если серия не указана — по году постройки и этажности."),
+    source=("ГИС ЖКХ («Если быть точным»), OpenStreetMap", "https://tochno.st/datasets/gisgkh"),
+    groups=[("khrush", "Хрущёвки"), ("panel", "Поздние панельные серии")],
 )
 def mass():
     b = buildings()
-    dated = b[b.date_flag != 5]
-    out = {i: "khrush" for i in dated[dated.year.between(1956, 1970) & dated.floors.between(4, 5)].identificatie}
-    out |= {i: "panel" for i in dated[dated.year.between(1971, 1990) & (dated.floors >= 9)].identificatie}
+    out = {}
+    series = b.series.fillna("") if "series" in b else pd.Series("", index=b.index)
+    for ident, ser, year, floors, flag in zip(b.identificatie, series, b.year, b.floors, b.date_flag):
+        if ser and KHRUSH_SERIES.search(ser):
+            out[ident] = "khrush"
+        elif ser and PANEL_SERIES.search(ser):
+            out[ident] = "panel"
+        elif flag != 5 and 1956 <= year <= 1970 and 4 <= floors <= 5:
+            out[ident] = "khrush"
+        elif flag != 5 and 1971 <= year <= 1990 and floors >= 9:
+            out[ident] = "panel"
     return out
 
 
@@ -680,12 +692,13 @@ def postwar():
     text=("После 1918 года большие квартиры доходных домов «уплотнили»: в каждую комнату заселили по семье, "
           "кухня и уборная стали общими. Так возникли петербургские коммуналки. Их расселяют с 1990-х, но в "
           "городе их до сих пор десятки тысяч, и почти все — в дореволюционных домах центра."),
-    caveat=("Косвенный признак: многоквартирные дома, построенные до 1917 года, по реестру домов «Реформы ЖКХ». "
+    caveat=("Косвенный признак: многоквартирные дома, построенные до 1917 года, по ГИС ЖКХ. "
             "Сведений о том, в каких квартирах сейчас коммуналки, в открытых данных нет."),
-    source=("Реформа ЖКХ (выгрузка 2016 года)", "https://github.com/kuk/analyze-reformagkh"),
+    source=("ГИС ЖКХ («Если быть точным», CC BY 4.0)", "https://tochno.st/datasets/gisgkh"),
     groups=[("prerev", "Дореволюционный многоквартирный дом")],
 )
 def communal():
     b = buildings()
-    hit = b[(b.year_src == "mkd") & (b.year <= 1917)]
+    series = b.series.fillna("") if "series" in b else pd.Series("", index=b.index)
+    hit = b[((b.year_src == "mkd") & (b.year <= 1917)) | series.str.contains("дореволюц", case=False)]
     return {i: "prerev" for i in hit.identificatie}

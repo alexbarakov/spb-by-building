@@ -4,8 +4,8 @@ Year sources, in order of trust (date_flag in brackets):
   monument   Wikidata item of a cultural heritage object (EGROKN id) inside the footprint or within 20 m:
              to the year [3], or spread across its decade or century [4]
   osm        OSM start_date: a year [0]; a range or a century is spread across it [1]
-  mkd        apartment-building registry (Reforma ZhKKh, 2016 snapshot) within the footprint or 15 m [0];
-             its 1917 means "before the revolution" and is spread across 1880–1917 [1]
+  mkd        GIS ZhKKh apartment-building registry (tochno.st dump, Sept 2026, CC BY 4.0), geocoded to the house,
+             within the footprint or 15 m [0]; its 1917 means "before the revolution" and is spread across 1880–1917 [1]
   unknown    no source, or a year before 1700, which in Petersburg is a tagging error [5]: drawn grey,
              and only once the timeline reaches today
 Floors: OSM building:levels [0], else height / 3.2 m [1], else a default for the building type [2].
@@ -68,10 +68,13 @@ def wikidata_dates(b):
 
 
 def registry_dates(b):
-    k = pd.read_csv("data/raw/kuk_reformagkh.csv", usecols=["latitude", "longitude", "year"])
-    k = k[k.year.notna() & k.latitude.between(59.7, 60.2) & k.longitude.between(29.6, 30.8)]
-    x, y = TO_CRS.transform(k.longitude.values, k.latitude.values)
-    pts = gpd.GeoDataFrame({"year": k.year.astype(int).values}, geometry=gpd.points_from_xy(x, y), crs=CRS)
+    g = pd.read_parquet("data/raw/gisgkh_spb.parquet")
+    g = g[g.qc_geo.isin(["Точные координаты", "Ближайший дом"])]
+    year = pd.to_numeric(g.building_year, errors="coerce").fillna(pd.to_numeric(g.comissioning_year, errors="coerce"))
+    g = g.assign(year=year)[year.between(1700, 2026)]
+    x, y = TO_CRS.transform(g.longitude.astype(float).values, g.latitude.astype(float).values)
+    pts = gpd.GeoDataFrame({"year": g.year.astype(int).values, "series": g.plan_series.values},
+                           geometry=gpd.points_from_xy(x, y), crs=CRS)
     j = attach_points(b, pts, 15)
     return j.drop_duplicates("identificatie").set_index("identificatie")
 
@@ -91,6 +94,7 @@ def main():
         else:
             year[i], flag[i] = y, EXACT
         src[i] = "mkd"
+    b["series"] = b.identificatie.map(r.series)
 
     for i, s in enumerate(b.start_date.values):
         d = parse_osm_date(s)

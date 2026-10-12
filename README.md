@@ -18,14 +18,16 @@ uv run python -m pipeline.s07_labels      # подписи улиц и рек
 python3 -m http.server 8643 --directory web
 ```
 
-Сырьё в `data/raw/` (не в git): `spb.osm.pbf` (BBBike, ODbL), `kuk_reformagkh.csv`
-(выгрузка «Реформы ЖКХ» 2016 года, github.com/kuk/analyze-reformagkh), `wd_spb.csv`.
+Сырьё в `data/raw/` (не в git): `spb.osm.pbf` (BBBike, ODbL); `gisgkh_spb.parquet` — ГИС ЖКХ из дампа
+«Если быть точным» (tochno.st/datasets/gisgkh, CC BY 4.0, сентябрь 2026); `wd_spb.csv`; `pandan_bombing.xlsx`
+(PANDAN ЕУСПб, github.com/Julianna-fil/bombing); `plaques.csv`, `districts.json`, `water_relations.json` (OSM/Overpass).
 
 ## Данные
 
-- Год известен у 13% зданий: реестр МКД 2016 (8,7 тыс.), Wikidata/ЕГРОКН (2,7 тыс.), OSM (2,6 тыс.).
+- Год известен у 17,5% зданий: ГИС ЖКХ (13,4 тыс.), Wikidata/ЕГРОКН (2,7 тыс.), OSM (2,6 тыс.).
   Остальные серые и появляются, когда таймлайн доходит до сегодняшнего дня.
-- 1917 в реестре МКД означает «до революции»: год разносится по 1880–1917 и помечается приблизительным.
-- Ждём от пользователя: реестр МКД (Реформа ЖКХ или ГИС ЖКХ, регион 78) и ЕГРОКН (opendata.mkrf.ru, csv.zip).
-  Госпорталы не открываются с зарубежного IP.
+- 1917 в ГИС ЖКХ означает «до революции»: год разносится по 1880–1917 и помечается приблизительным.
+- Следующие источники (качает пользователь, Яндекс.Диск и госпорталы не отдают файлы на зарубежный IP):
+  «How old is this house» по СПб (disk.yandex.ru/d/-zPLMeUyhtZQow, ODbL, 55 тыс. зданий с годом);
+  ТЭП МКД (data.gov.spb.ru, поле комнат в коммуналках); ОКН КГИОП (data.gov.spb.ru); ЕГРОКН (opendata.mkrf.ru).
 - Выгрузка BBBike покрывает основную часть города; Кронштадт, Петергоф, Пушкин, Колпино вне её.
