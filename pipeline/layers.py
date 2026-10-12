@@ -144,32 +144,6 @@ def foreign():
     return by_items(pd.Series(keyed))
 
 
-ARCHITECTS = [
-    ("trezzini", "Трезини", "Трезини"), ("rastrelli", "Растрелли", "Растрелли"), ("quarenghi", "Кваренги", "Кваренги"),
-    ("rossi", "Росси", "Росси"), ("stasov", "Стасов", "Стасов"),
-    ("benois", "Бенуа", "Бенуа"), ("lidval", "Лидваль", "Лидваль"),
-]
-
-
-@layer(
-    id="architects", section="Архитектура", title="Архитекторы", era="1703–1917",
-    text=("Восемь имён, без которых центр Петербурга выглядел бы иначе: от Трезини, первого архитектора "
-          "города, до Лидваля, мастера северного модерна."),
-    caveat="По данным Wikidata; авторство указано примерно у 600 зданий города.",
-    source=("Wikidata", "https://www.wikidata.org"),
-    groups=[(k, label) for k, label, _ in ARCHITECTS],
-)
-def architects():
-    w = wikidata()
-    keyed = {}
-    for item, names in zip(w.i, w.architects):
-        for k, _, needle in ARCHITECTS:
-            if names and needle in names:
-                keyed[item] = k
-                break
-    return by_items(pd.Series(keyed))
-
-
 FAITHS = [
     ("orthodox", "Православные", r"orthodox"),
     ("oldbel", "Старообрядческие", r"old_believers"),
@@ -749,4 +723,44 @@ def lastaddress():
         more = f" И ещё {len(grp) - 4}." if len(grp) > 4 else ""
         link = next((l for l in grp.link if l), "https://www.poslednyadres.ru")
         notes[ident] = dict(story=" · ".join(people) + more, source=link)
+    return members, notes
+
+
+
+ART_GROUPS = [("mural", "Мурал"), ("graffiti", "Граффити"), ("mosaic", "Мозаика или роспись")]
+
+
+@layer(
+    id="streetart", section="Город", title="Уличный арт", era="1960–наши дни",
+    text=("Брандмауэры Петербурга — глухие торцевые стены доходных домов — стали холстом: на них пишут муралы "
+          "и граффити, а в спальных районах до сих пор сохраняются советские мозаичные панно. Часть работ "
+          "закрашивают, поэтому слой — снимок на сегодня."),
+    caveat="Работы, нанесённые на OpenStreetMap; здание в пределах 12 м. Авторы и годы — там, где они указаны.",
+    source=("OpenStreetMap", "https://www.openstreetmap.org"),
+    groups=ART_GROUPS,
+)
+def streetart():
+    p = osm_points(r'"tourism"=>"artwork"')
+    tag = lambda k: p.other_tags.str.extract(r'"%s"=>"([^"]*)"' % re.escape(k))[0]
+    kind = tag("artwork_type").fillna("")
+    group = np.where(kind.isin(["mural"]), "mural", np.where(kind.isin(["graffiti"]), "graffiti",
+                     np.where(kind.isin(["mosaic", "painting"]), "mosaic", "")))
+    g = gpd.GeoDataFrame({"k": group, "name": p.name.values, "artist": tag("artist_name").values,
+                          "year": tag("start_date").values, "wd": tag("wikidata").values}, geometry=p.geometry.values, crs=CRS)
+    g = g[g.k != ""]
+    j = attach_points(buildings(), g, 12)
+    members, notes = {}, {}
+    label = dict(ART_GROUPS)
+    for ident, grp in j.groupby("identificatie"):
+        r = grp.iloc[0]
+        members[ident] = r.k
+        bits = [label[r.k]]
+        if isinstance(r["name"], str):
+            bits.append(f"«{r['name']}»")
+        if isinstance(r.artist, str):
+            bits.append(f"автор — {r.artist}")
+        if isinstance(r.year, str):
+            bits.append(r.year)
+        notes[ident] = dict(story=", ".join(bits) + ".",
+                            **({"source": f"https://www.wikidata.org/wiki/{r.wd}"} if isinstance(r.wd, str) else {}))
     return members, notes

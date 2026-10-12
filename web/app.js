@@ -838,23 +838,5 @@ renderer.setAnimationLoop(now => {
   renderer.render(scene, camera);
 });
 
-// LAYRS logo: exactly as tall as the capital letters of the city's name, standing on the same baseline.
-function fitLogo() {
-  const h1 = document.querySelector('h1'), logo = h1?.querySelector('.layrs'), probe = h1?.querySelector('.baseline');
-  if (!logo || !probe) return;
-  const cs = getComputedStyle(h1);
-  const ctx = document.createElement('canvas').getContext('2d');
-  ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  const name = h1.textContent.replace('LAYRS', '').trim();
-  const cap = ctx.measureText(name[0] || 'H').actualBoundingBoxAscent;
-  const base = probe.getBoundingClientRect().top - h1.getBoundingClientRect().top;
-  logo.style.height = `${cap}px`;
-  logo.style.top = `${base - cap}px`;
-  logo.style.fontSize = `${cap / 4.6}px`;
-  h1.style.paddingLeft = `${logo.getBoundingClientRect().width + cap * 0.22}px`;
-}
-document.fonts?.ready.then(fitLogo);
-addEventListener('resize', fitLogo);
-fitLogo();
 
 window.__dbg = { pick, uniforms, camera, controls, setLayer, layers, pinCard, showCard, building, labelGroup, labels };

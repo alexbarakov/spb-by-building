@@ -29,6 +29,8 @@ h1 { position: relative; }
 .layrs { font-family: "Onest", sans-serif; position: absolute; left: 0; top: 0; writing-mode: vertical-rl; transform: rotate(180deg); display: flex;
   align-items: center; justify-content: center; background: var(--red); color: var(--paper); font-weight: 800;
   line-height: 1; letter-spacing: .14em; padding: 0 .3em; border-radius: 2px; box-sizing: border-box; }
+.layrs { visibility: hidden; }
+.layrs.fitted { visibility: visible; }
 .baseline { display: inline-block; width: 0; height: 0; vertical-align: baseline; }
 h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, serif; letter-spacing: -0.01em; }
 .dek { margin: 8px 0 0; color: var(--muted); max-width: 30ch; font-size: 14px; line-height: 1.4; }
