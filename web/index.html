@@ -24,8 +24,9 @@
 
 <nav class="modes" aria-label="Как раскрасить город">
   <button data-mode="0" aria-pressed="true">Эпохи</button>
-  <button data-mode="1" aria-pressed="false">Этажи</button>
   <button data-mode="2" aria-pressed="false">Слои</button>
+  <span class="modes-sep" aria-hidden="true"></span>
+  <button class="walks-open" aria-haspopup="dialog"><span>Прогулка</span></button>
 </nav>
 
 <div class="tally" aria-live="polite">
@@ -93,6 +94,11 @@
 </dialog>
 
 <div id="card" class="card" hidden></div>
+<section id="walk" class="walkcard" hidden aria-live="polite"></section>
+<dialog id="walks" class="about walks" aria-labelledby="walks-title">
+  <button class="about-close" aria-label="Закрыть">×</button>
+  <article id="walks-body"></article>
+</dialog>
 <p class="howto">Тяните, чтобы повернуть. Правая кнопка или Shift — сдвинуть. Колесо — масштаб.</p>
 
 <footer class="timeline">

@@ -22,6 +22,57 @@ const [config, layers, attrBuf] = await Promise.all([
 const attrs = new DataView(attrBuf);
 const periods = config.periods;
 
+// ---------- Language ----------
+// The viewer is in Russian; the walk module speaks through t() like the other cities' viewers.
+const LANG = 'ru';
+const RU = {
+ "As many as fit": "Сколько поместится",
+ "Back to the start": "С возвратом",
+ "Cancel": "Отмена",
+ "Change": "Изменить",
+ "Choose what interests you, where you start and how far you want to go. The walk links the buildings with stories on the way.": "Выберите, что вам интересно, откуда начать и как далеко идти. Маршрут свяжет дома с историями по пути.",
+ "Click the map where the walk should start.": "Нажмите на карту там, где начать прогулку.",
+ "Close": "Закрыть",
+ "Download the walk with its stories (KML), for Google My Maps: Create a new map, then Import.": "Скачать прогулку с историями (KML) для Google Мои карты: создайте карту и выберите «Импорт».",
+ "Fewer stops than asked: that is all the stories you chose.": "Остановок меньше, чем просили: других историй по выбранным темам нет.",
+ "Google Maps takes nine stops; the paler ones lie on the way.": "Google Карты принимают девять точек; бледные остановки лежат по пути.",
+ "How far": "Как далеко",
+ "How many stops": "Сколько остановок",
+ "Lived or worked here": "Жил или работал здесь",
+ "Longer than asked: few of the stories you chose lie that close.": "Длиннее, чем просили: выбранных историй рядом мало.",
+ "Make my walk": "Построить прогулку",
+ "No stories within reach. Try a longer walk or more interests.": "Рядом нет историй. Попробуйте длиннее или больше тем.",
+ "Nothing chosen: the walk takes every story.": "Ничего не выбрано: в прогулку войдут все истории.",
+ "One way": "В одну сторону",
+ "Open in Google Maps": "Открыть в Google Картах",
+ "Pick on the map": "Выбрать на карте",
+ "Plan a walk": "Прогулка",
+ "Point on the map": "Точка на карте",
+ "Shorter than asked: the stories you chose lie close together.": "Короче, чем просили: выбранные истории близко друг к другу.",
+ "Source": "Источник",
+ "Start": "Старт",
+ "Start from where you are: share your location, or choose a start below.": "Начните оттуда, где вы сейчас: поделитесь местоположением или выберите старт ниже.",
+ "Straight lines on the map; Google Maps shows the walking route.": "На карте прямые линии; пешеходный маршрут покажут Google Карты.",
+ "The location was not shared. Pick a start on the map instead.": "Местоположение не получено. Выберите старт на карте.",
+ "This browser does not share its location.": "Этот браузер не сообщает местоположение.",
+ "What interests you": "Что интересно",
+ "Where you start": "Откуда",
+ "You seem to be outside the city, so the walk starts at {s}.": "Похоже, вы не в городе, поэтому прогулка начнётся от точки «{s}».",
+ "Your location": "Ваше местоположение",
+ "Your point": "Ваша точка",
+ "Your walk": "Ваша прогулка",
+ "about {m} min": "около {m} мин",
+ "Share my location": "Поделиться местоположением",
+ "Asking for your location…": "Запрашиваем местоположение…",
+ "Generate a walk": "Построить прогулку",
+ "Buildings today": "Здания сегодня",
+ "All layers": "Все слои",
+ "Storeys": "Этажность"
+};
+const t = s => RU[s] || s;
+const tr = (o, k) => o?.[k];
+const L10 = o => o?.ru || o?.en || '';
+
 // ---------- Scene ----------
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -166,6 +217,7 @@ function updateLabels(dist) {
 
 // ---------- Shared uniforms ----------
 const col = c => new THREE.Color(c);
+const FOCUS_MAX = 160;  // buildings a walk can light up at once
 const uniforms = {
   uYear: { value: config.yearMax },
   uYearFrom: { value: config.yearMin - 1 },
@@ -179,6 +231,9 @@ const uniforms = {
   uUnknown: { value: 1 },
   uHover: { value: -1 },
   uSelected: { value: -1 },
+  uFocus: { value: Array(FOCUS_MAX).fill(-1) },
+  uFocusGroup: { value: Array(FOCUS_MAX).fill(0) },
+  uFocusN: { value: 0 },
   uFogColor: { value: col(SKY) },
   uFog: { value: new THREE.Vector2(9000, 26000) },
   uNow: { value: 0 },        // seconds, for tiles dropping in as they load
@@ -193,6 +248,9 @@ const VERT = /* glsl */`
   uniform vec3 uPalette[${periods.length}];
   uniform float uMask[${periods.length}];
   uniform int uGroupBit[${MAX_GROUPS}];
+  uniform float uFocus[${FOCUS_MAX}];
+  uniform int uFocusGroup[${FOCUS_MAX}];
+  uniform int uFocusN;
   uniform vec3 uGroupColor[${MAX_GROUPS}];
   uniform vec3 uMaquette, uUnknownColor;
   uniform float uUnknown;
@@ -252,6 +310,13 @@ const VERT = /* glsl */`
       c = uMaquette;
       for (int g = 0; g < ${MAX_GROUPS}; g++) {
         if (uGroupBit[g] >= 0 && hasBit(lay, uGroupBit[g])) { c = uGroupColor[g]; break; }
+      }
+    }
+    if (uFocusN > 0) {
+      c = uMaquette;
+      for (int k = 0; k < ${FOCUS_MAX}; k++) {
+        if (k >= uFocusN) break;
+        if (abs(vGid - uFocus[k]) < 0.5) { c = uGroupColor[uFocusGroup[k]]; break; }
       }
     }
     if (year <= uYearFrom) c = mix(c, uMaquette, 0.8);
@@ -511,6 +576,11 @@ canvas.addEventListener('pointerdown', e => {
 canvas.addEventListener('pointerup', e => {
   dragging = false;
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  if (pickingStart) {
+    const at = groundAt(e.clientX, e.clientY);
+    if (at) { pickingStart = false; walkPrefs.at = at; walkPrefs.atLabel = t('Point on the map'); walkEl.hidden = true; openWalks(); }
+    return;
+  }
   const gid = pick(e.clientX, e.clientY);
   pinCard(gid === pinnedGid ? -1 : gid, e.clientX, e.clientY);
 });
@@ -543,6 +613,420 @@ function stepFlight(now) {
   if (k >= 1) { const d = flight.done; flight = null; d?.(); }
 }
 
+// Walk shows as on while a walk is open; on a phone the timeline steps aside.
+function markWalk() {
+  document.querySelector('.walks-open').setAttribute('aria-pressed', String(!!walkRoute));
+  document.body.classList.toggle('walking', !!walkRoute);
+}
+
+// Local metres <-> WGS84 through UTM zone 36N (EPSG:32636), the frame the pipeline works in.
+const UTM = { a: 6378137, f: 1 / 298.257223563, k0: 0.9996, lon0: 33 * Math.PI / 180, E0: 500000 };
+function toLatLon(x, z) {
+  const E = x + config.origin[0] - UTM.E0, N = config.origin[1] - z;
+  const { a, f, k0 } = UTM, e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  const M = N / k0, mu = M / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const p1 = mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu) + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
+    + (151 * e1 ** 3 / 96) * Math.sin(6 * mu);
+  const C1 = ep2 * Math.cos(p1) ** 2, T1 = Math.tan(p1) ** 2, N1 = a / Math.sqrt(1 - e2 * Math.sin(p1) ** 2);
+  const R1 = a * (1 - e2) / (1 - e2 * Math.sin(p1) ** 2) ** 1.5, D = E / (N1 * k0);
+  const lat = p1 - (N1 * Math.tan(p1) / R1) * (D ** 2 / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * ep2) * D ** 4 / 24
+    + (61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * ep2 - 3 * C1 ** 2) * D ** 6 / 720);
+  const lon = UTM.lon0 + (D - (1 + 2 * T1 + C1) * D ** 3 / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * ep2 + 24 * T1 ** 2) * D ** 5 / 120) / Math.cos(p1);
+  return [lat * 180 / Math.PI, lon * 180 / Math.PI];
+}
+function fromLatLon(latd, lond) {
+  const { a, f, k0 } = UTM, e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  const lat = latd * Math.PI / 180, lon = lond * Math.PI / 180;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(lat) ** 2), T = Math.tan(lat) ** 2, C = ep2 * Math.cos(lat) ** 2, A = Math.cos(lat) * (lon - UTM.lon0);
+  const M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * lat - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * lat)
+    + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * lat) - (35 * e2 ** 3 / 3072) * Math.sin(6 * lat));
+  const E = UTM.E0 + k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T ** 2 + 72 * C - 58 * ep2) * A ** 5 / 120);
+  const Nn = k0 * (M + N * Math.tan(lat) * (A ** 2 / 2 + (5 - T + 9 * C + 4 * C ** 2) * A ** 4 / 24 + (61 - 58 * T + T ** 2 + 600 * C - 330 * ep2) * A ** 6 / 720));
+  return [E - config.origin[0], -(Nn - config.origin[1])];
+}
+// ---------- Walks ----------
+// Where a walk can start besides the walker's location: the city config's list, else the map's centre.
+const STARTS = [{ ru: 'Дворцовая площадь', x: 0, z: 0 }, { ru: 'Московский вокзал', x: 2545, z: 1128 }];
+// A walk through the stories the walker cares about: pick interests, a start and a distance; the stops are the
+// buildings with a story in those layers, chosen greedily by story per metre and ordered by 2-opt. Distances are
+// straight lines times a detour factor; Google Maps gives the real walking route.
+const DETOUR = 1.3, WALK_KMH = 4.5, STOP_MIN = 3, MAX_STOPS = 20;
+const GOOGLE_LEG = 9;  // a Google Maps link takes at most 9 waypoints
+const walkEl = document.getElementById('walk');
+const walksDlg = document.getElementById('walks');
+const walkGroup = new THREE.Group();
+walkGroup.renderOrder = 5;
+scene.add(walkGroup);
+let walkPrefs = { layers: [], start: 0, km: 3, loop: true, at: null, stops: 0 }, walkRoute = null, pickingStart = false;
+
+// Every building with a story, merged across layers: one stop can carry several stories.
+let poiCache = null;
+function pois() {
+  if (poiCache) return poiCache;
+  const by = new Map();
+  for (const L of layers) for (const [bag, n] of Object.entries(L.notes || {})) {
+    if (!n.at) continue;
+    const p = by.get(bag) || { bag, bags: [bag], x: n.at[0], z: n.at[1], notes: [] };
+    p.notes.push({ L, n });
+    by.set(bag, p);
+  }
+  // One stop per named place: a complex of several buildings (a laboratory, a hofje) carries the same story on
+  // each of them; keep the building nearest their middle.
+  const byName = new Map();
+  for (const p of by.values()) {
+    const key = p.notes.map(x => x.n.name).find(Boolean) || p.bag;
+    (byName.get(key) || byName.set(key, []).get(key)).push(p);
+  }
+  poiCache = [];
+  for (const ps of byName.values()) {
+    const mx = ps.reduce((a, p) => a + p.x, 0) / ps.length, mz = ps.reduce((a, p) => a + p.z, 0) / ps.length;
+    const keep = ps.reduce((a, p) => Math.hypot(p.x - mx, p.z - mz) < Math.hypot(a.x - mx, a.z - mz) ? p : a);
+    const seen = new Set(keep.notes.map(x => x.L.id));
+    keep.bags = [...new Set(ps.flatMap(p => p.bags))];
+    for (const p of ps) for (const x of p.notes) if (!seen.has(x.L.id)) { keep.notes.push(x); seen.add(x.L.id); }
+    poiCache.push(keep);
+  }
+  return poiCache;
+}
+const walkLayers = () => layers.filter(L => Object.values(L.notes || {}).filter(n => n.at).length >= 3);
+const poiName = p => { if (p.name) return p.name; const n = p.notes.find(x => x.n.name && !x.n.people) || p.notes[0]; return tr(n.n, 'name') || n.n.name; };
+function poiScore(p, chosen) {
+  const hit = p.notes.filter(x => !chosen.length || chosen.includes(x.L.id)).length;
+  if (!hit) return 0;
+  const g = gidOf(p.bag), w = g >= 0 ? wiki[building(g).wk] : null;
+  return 1 + 0.5 * (hit - 1) + (w?.image ? 0.4 : 0) + 0;
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+function pathLen(pts) { let d = 0; for (let i = 1; i < pts.length; i++) d += dist(pts[i - 1], pts[i]); return d; }
+function planWalkWithGap({ layers: chosen, km, loop, stops: asked, custom }, start, gap) {
+  const budget = km * 1000 / DETOUR;
+  const S = { x: start[0], z: start[1], start: true };
+  let cand = (custom || pois().map(p => ({ ...p, score: poiScore(p, chosen) })))
+    .filter(p => p.score > 0 && dist(p, S) <= (loop ? budget / 2 : budget));
+  // Stops keep a spacing that grows with the walk, so a long walk goes somewhere instead of circling the Markt;
+  // a closer one merges into the higher scored stop (a church with three entries is one stop).
+  cand.sort((a, b) => b.score - a.score);
+  cand = cand.filter((p, i) => !cand.slice(0, i).some(q => dist(p, q) < 25));
+  const route = loop ? [S, S] : [S];
+  const cap = asked || MAX_STOPS;
+  const max = loop ? cap : cap + 1;
+  while (route.length - (loop ? 2 : 1) < max) {
+    let best = null;
+    for (const c of cand) {
+      if (route.includes(c) || route.some(r => !r.start && dist(r, c) < gap)) continue;
+      for (let i = 0; i < route.length; i++) {
+        const next = route[i + 1];
+        const add = next ? dist(route[i], c) + dist(c, next) - dist(route[i], next) : dist(route[i], c);
+        if (!next && loop) continue;
+        if (pathLen(route) + add > budget) continue;
+        const ratio = c.score / (add + gap);
+        if (!best || ratio > best.ratio) best = { c, i, ratio };
+      }
+    }
+    if (!best) break;
+    route.splice(best.i + 1, 0, best.c);
+  }
+  // 2-opt over the stops between the fixed ends
+  for (let improved = true; improved;) {
+    improved = false;
+    const last = loop ? route.length - 2 : route.length - 1;
+    for (let i = 1; i < last; i++) for (let j = i + 1; j <= last; j++) {
+      const a = route[i - 1], b = route[i], c = route[j], d = route[j + 1];
+      const before = dist(a, b) + (d ? dist(c, d) : 0), after = dist(a, c) + (d ? dist(b, d) : 0);
+      if (after < before - 1) { route.splice(i, j - i + 1, ...route.slice(i, j + 1).reverse()); improved = true; }
+    }
+  }
+  return { start: S, stops: route.filter(p => !p.start), loop, length: pathLen(route) * DETOUR, route,
+    score: route.reduce((n, p) => n + (p.score || 0), 0) };
+}
+// A wide spacing first; when the chosen stories are few and close together, tighter spacings keep them all.
+function planAtLength(prefs, start) {
+  const wide = Math.min(400, Math.max(30, prefs.km * 1000 / DETOUR / ((prefs.stops || MAX_STOPS) * 2.2)));
+  const plans = [wide, wide / 2, wide / 4, 25].map(g => planWalkWithGap(prefs, start, g));
+  const most = Math.max(...plans.map(p => p.stops.length));
+  return plans.find(p => p.stops.length >= most);  // the widest spacing that loses no stop
+}
+// A walk with one or two stops is not a walk: when the chosen stories lie further away than the distance allows,
+// the distance grows (up to three times) until there are a few of them, and the card says so.
+const MIN_STOPS = 4;
+function planWalk(prefs, start) {
+  const available = prefs.custom ? prefs.custom.length : pois().filter(p => poiScore(p, prefs.layers) > 0).length;
+  const want = Math.min(prefs.stops || MIN_STOPS, available);
+  let w = planAtLength(prefs, start);
+  for (let k = 1.25; w.stops.length < want && k <= 4.01; k += 0.25) {
+    w = planAtLength({ ...prefs, km: prefs.km * k }, start);
+    w.stretched = true;
+  }
+  return w;
+}
+// A stop goes to Google Maps by name and address, so Google opens its own card for the place (often with the
+// Wikipedia summary); a stop without an address, and the start, go by coordinates.
+const poiAddress = p => p.notes.map(x => x.n.address || x.n.people?.find(q => q.address)?.address).find(Boolean);
+function poiQuery(p) {
+  const addr = poiAddress(p), name = poiName(p);
+  if (!addr) return null;
+  return [name && name !== addr ? name : null, addr, 'Санкт-Петербург'].filter(Boolean).join(', ');
+}
+// One Google Maps link: it takes at most 9 waypoints, so a longer walk sends the 9 best stops in walking order;
+// the others lie on the way between them.
+function googleStops(w) {
+  const max = w.loop ? GOOGLE_LEG : GOOGLE_LEG + 1;
+  if (w.stops.length <= max) return w.stops;
+  const keep = new Set([...w.stops].sort((a, b) => b.score - a.score).slice(0, max));
+  return w.stops.filter(p => keep.has(p));
+}
+function googleUrl(w) {
+  const ll = p => (!p.start && poiQuery(p)) || toLatLon(p.x, p.z).map(v => v.toFixed(6)).join(',');
+  const stops = googleStops(w).map(ll);
+  const dest = w.loop ? ll(w.start) : stops.pop();
+  const u = new URL('https://www.google.com/maps/dir/');
+  u.searchParams.set('api', '1');
+  u.searchParams.set('origin', ll(w.start));
+  u.searchParams.set('destination', dest);
+  if (stops.length) u.searchParams.set('waypoints', stops.join('|'));
+  u.searchParams.set('travelmode', 'walking');
+  return u.toString();
+}
+// The walk as KML, for Google My Maps or any map app: every stop with its story, its sources and a photo.
+function walkKml(w) {
+  const x = v => String(v ?? '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+  const pt = p => toLatLon(p.x, p.z).reverse().join(',') + ',0';
+  const marks = w.stops.map((p, i) => {
+    const g = gidOf(p.bag), wk = g >= 0 ? wiki[building(g).wk] : null, img = wk?.image?.thumb;
+    const art = wk && (LANG === 'nl' ? wk.wiki_nl || wk.wiki : wk.wiki || wk.wiki_nl);
+    const stories = p.notes.map(n => n.n.people
+      ? `<p>${n.n.people.map(q => `${x(q.person)} (<a href="${x(q.url)}">Wikipedia</a>)`).join(', ')}</p>`
+      : `<p>${x(tr(n.n, 'story'))}${n.n.source ? ` <a href="${x(n.n.source)}">${x(t('Source'))}</a>` : ''}</p>`).join('');
+    const desc = `${img ? `<img src="${x(img)}" width="300"/>` : ''}${stories}${art?.url ? `<p><a href="${x(art.url)}">Wikipedia</a></p>` : ''}`;
+    return `<Placemark><name>${i + 1}. ${x(poiName(p))}</name><description><![CDATA[${desc}]]></description>
+<Point><coordinates>${pt(p)}</coordinates></Point></Placemark>`;
+  }).join('\n');
+  const line = [w.start, ...w.stops, ...(w.loop ? [w.start] : [])].map(pt).join(' ');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>LAYRS: Петербург: ${x(t('Your walk'))}</name>
+<Placemark><name>${x(t('Start'))}</name><Point><coordinates>${pt(w.start)}</coordinates></Point></Placemark>
+${marks}
+<Placemark><name>${x(t('Your walk'))}</name><LineString><tessellate>1</tessellate><coordinates>${line}</coordinates></LineString></Placemark>
+</Document></kml>`;
+}
+function downloadKml(w) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([walkKml(w)], { type: 'application/vnd.google-earth.kml+xml' }));
+  a.download = `layrs-${config.city}-walk.kml`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// ---- on the map: a ribbon along the walk and a numbered disc over every stop
+function discTexture(text, fill, ink) {
+  const c = document.createElement('canvas'); c.width = c.height = 96;
+  const g = c.getContext('2d');
+  g.beginPath(); g.arc(48, 48, 40, 0, Math.PI * 2); g.fillStyle = fill; g.fill();
+  g.lineWidth = 7; g.strokeStyle = '#ffffff'; g.stroke();
+  g.fillStyle = ink; g.font = '800 44px "Schibsted Grotesk", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 48, 51);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4;
+  return t;
+}
+// While a walk is shown the city is a plain model and only the walk's buildings carry colour (the graph's focus).
+function lightWalk(w) {
+  if (!w) { uniforms.uFocusN.value = 0; return; }
+  const gids = [...new Set(w.stops.flatMap(p => p.bags.map(gidOf)))].filter(g => g >= 0).slice(0, FOCUS_MAX);
+  uniforms.uFocus.value = [...gids, ...Array(FOCUS_MAX - gids.length).fill(-1)];
+  uniforms.uFocusGroup.value = Array(FOCUS_MAX).fill(0);
+  uniforms.uFocusN.value = gids.length;
+}
+function drawWalk(w) {
+  walkGroup.clear();
+  lightWalk(w);
+  if (!w) return;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--red').trim() || '#b8892a';
+  const pts = w.route, pos = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], len = dist(a, b) || 1, nx = -(b.z - a.z) / len * 3.5, nz = (b.x - a.x) / len * 3.5;
+    pos.push(a.x + nx, 1, a.z + nz, a.x - nx, 1, a.z - nz, b.x + nx, 1, b.z + nz,
+      a.x - nx, 1, a.z - nz, b.x - nx, 1, b.z - nz, b.x + nx, 1, b.z + nz);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const ribbon = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.85,
+    side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+  walkGroup.add(ribbon);
+  const marker = (p, text, fill, ink) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: discTexture(text, fill, ink), depthTest: false, sizeAttenuation: false }));
+    s.scale.set(0.034, 0.034, 1);
+    s.position.set(p.x, 30, p.z);
+    s.renderOrder = 20;
+    walkGroup.add(s);
+  };
+  marker(w.start, '★', '#ffffff', accent);
+  w.stops.forEach((p, i) => marker(p, String(i + 1), accent, '#ffffff'));
+}
+// ---- the planner
+function startPoint() {
+  if (walkPrefs.at) return walkPrefs.at;
+  const s = STARTS[walkPrefs.start] || STARTS[0];
+  return [s.x, s.z];
+}
+function renderWalkPlanner(msg = '') {
+  const L = walkLayers(), sel = walkPrefs.layers;
+  const startName = walkPrefs.at ? (walkPrefs.atLabel || t('Your point')) : L10(STARTS[walkPrefs.start]);
+  document.getElementById('walks-body').innerHTML = `
+    <h2 id="walks-title">${t('Plan a walk')}</h2>
+    <p class="w-lede">${t('Choose what interests you, where you start and how far you want to go. The walk links the buildings with stories on the way.')}</p>
+    <h3>${t('Where you start')}</h3>
+    <div class="w-locate">${walkPrefs.atLabel === t('Your location')
+      ? `<p class="w-note">${t('Start')}: ${esc(startName)}</p>`
+      : `<button class="w-share" data-geo>${t(locating ? 'Asking for your location…' : 'Share my location')}</button>
+         <p class="w-note">${t('Start from where you are: share your location, or choose a start below.')}</p>`}</div>
+    <div class="w-chips">${STARTS.map((s, i) => `<button class="w-chip" data-start="${i}" aria-pressed="${!walkPrefs.at && walkPrefs.start === i}">${esc(L10(s))}</button>`).join('')}
+      <button class="w-chip" data-pick aria-pressed="${walkPrefs.atLabel === t('Point on the map')}">${t('Pick on the map')}</button></div>
+    ${walkPrefs.atLabel === t('Your location') ? '' : `<p class="w-note">${t('Start')}: ${esc(startName)}</p>`}
+    <h3>${t('What interests you')}</h3>
+    <div class="w-chips">${L.map(l => `<button class="w-chip" data-l="${l.id}" aria-pressed="${sel.includes(l.id)}">${sectionIcon(l.section)}${esc(tr(l, 'title'))}</button>`).join('')}</div>
+    <p class="w-note">${sel.length ? '' : t('Nothing chosen: the walk takes every story.')}</p>
+    <h3>${t('How far')}</h3>
+    <div class="w-chips">${[1, 2, 3, 5, 8].map(k => `<button class="w-chip" data-km="${k}" aria-pressed="${walkPrefs.km === k}">${k} km</button>`).join('')}
+      <span class="w-sep"></span>
+      <button class="w-chip" data-loop="1" aria-pressed="${walkPrefs.loop}">${t('Back to the start')}</button>
+      <button class="w-chip" data-loop="0" aria-pressed="${!walkPrefs.loop}">${t('One way')}</button></div>
+    <h3>${t('How many stops')}</h3>
+    <div class="w-chips">${[0, 5, 10, 15, 20].map(n => `<button class="w-chip" data-stops="${n}" aria-pressed="${walkPrefs.stops === n}">${n ? n : t('As many as fit')}</button>`).join('')}</div>
+    ${msg ? `<p class="w-msg">${esc(msg)}</p>` : ''}
+    <div class="w-go"><button class="w-make">${t('Make my walk')}</button></div>`;
+  const body = document.getElementById('walks-body');
+  body.querySelectorAll('[data-l]').forEach(b => b.onclick = () => {
+    const id = b.dataset.l;
+    walkPrefs.layers = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id];
+    renderWalkPlanner();
+  });
+  body.querySelectorAll('[data-start]').forEach(b => b.onclick = () => { walkPrefs.start = +b.dataset.start; walkPrefs.at = null; walkPrefs.atLabel = null; renderWalkPlanner(); });
+  body.querySelectorAll('[data-km]').forEach(b => b.onclick = () => { walkPrefs.km = +b.dataset.km; renderWalkPlanner(); });
+  body.querySelectorAll('[data-stops]').forEach(b => b.onclick = () => { walkPrefs.stops = +b.dataset.stops; renderWalkPlanner(); });
+  body.querySelectorAll('[data-loop]').forEach(b => b.onclick = () => { walkPrefs.loop = b.dataset.loop === '1'; renderWalkPlanner(); });
+  body.querySelector('[data-geo]')?.addEventListener('click', requestLocation);
+  body.querySelector('[data-pick]').onclick = () => { pickingStart = true; walksDlg.close(); showWalkHint(); };
+  body.querySelector('.w-make').onclick = makeWalk;
+}
+let locating = false, locationAsked = false;
+function requestLocation() {
+  locationAsked = true;
+  if (!navigator.geolocation) { renderWalkPlanner(t('This browser does not share its location.')); return; }
+  locating = true; renderWalkPlanner();
+  navigator.geolocation.getCurrentPosition(pos => {
+    locating = false;
+    const [x, z] = fromLatLon(pos.coords.latitude, pos.coords.longitude);
+    if (Math.hypot(x, z) > 6000) { renderWalkPlanner(t('You seem to be outside the city, so the walk starts at {s}.').replace('{s}', L10(STARTS[0]))); return; }
+    walkPrefs.at = [x, z]; walkPrefs.atLabel = t('Your location'); renderWalkPlanner();
+  }, () => { locating = false; renderWalkPlanner(t('The location was not shared. Pick a start on the map instead.')); },
+  { enableHighAccuracy: true, timeout: 10000 });
+}
+function showWalkHint() {
+  walkEl.hidden = false;
+  walkEl.className = 'walkcard';
+  walkEl.innerHTML = `<header><b>${t('Plan a walk')}</b></header><p class="q-riddle">${t('Click the map where the walk should start.')}</p>
+    <div class="q-actions"><button class="w-cancel">${t('Cancel')}</button></div>`;
+  walkEl.querySelector('.w-cancel').onclick = () => { pickingStart = false; walkEl.hidden = true; openWalks(); };
+}
+// A click on the ground while picking: where the pointer ray meets the ground plane.
+function groundAt(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  camera.updateMatrixWorld();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+  const hit = new THREE.Vector3();
+  return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit) ? [hit.x, hit.z] : null;
+}
+function makeWalk() {
+  const w = planWalk(walkPrefs, startPoint());
+  if (!w.stops.length) { renderWalkPlanner(t('No stories within reach. Try a longer walk or more interests.')); return; }
+  walkRoute = w;
+  walksDlg.close();
+  drawWalk(w);
+  renderWalk();
+  const xs = w.route.map(p => p.x), zs = w.route.map(p => p.z);
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
+  flyTo((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...zs) + Math.min(...zs)) / 2, null, Math.max(600, span * 2.2));
+  const u = new URL(location.href);
+  if (walkPrefs.custom) u.searchParams.delete('walk'); else u.searchParams.set('walk', [walkPrefs.km, walkPrefs.loop ? 1 : 0, startPoint().map(Math.round).join('_'), walkPrefs.layers.join('.'), walkPrefs.stops].join('~'));
+  history.replaceState(null, '', u);
+}
+function renderWalk() {
+  const w = walkRoute;
+  if (!w) return;
+  const mins = Math.round(w.length / 1000 / WALK_KMH * 60 + w.stops.length * STOP_MIN);
+  const inGoogle = new Set(googleStops(w));
+  walkEl.hidden = false;
+  walkEl.className = 'walkcard';
+  walkEl.innerHTML = `
+    <button class="q-close" aria-label="${t('Close')}">×</button>
+    <header><b>${t('Your walk')}</b><span class="w-meta">${(w.length / 1000).toFixed(1).replace('.', ',')} km · ${t('about {m} min').replace('{m}', mins)}</span></header>
+    <div class="q-actions"><a class="w-google" href="${esc(googleUrl(w))}" target="_blank" rel="noopener">${t('Open in Google Maps')}</a>
+      <button class="w-change">${t('Change')}</button>
+      <button class="w-kml" title="${t('Download the walk with its stories (KML), for Google My Maps: Create a new map, then Import.')}" aria-label="${t('Download the walk with its stories (KML), for Google My Maps: Create a new map, then Import.')}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0-3-3m3 3 3-3M3 12.5v1.5h10v-1.5"/></svg></button></div>
+    <ol class="w-stops">${w.stops.map((p, i) => {
+      const pref = [...p.notes].sort((a, b) => (walkPrefs.layers.includes(b.L.id) ? 1 : 0) - (walkPrefs.layers.includes(a.L.id) ? 1 : 0));
+      const story = pref.map(x => x.n.people ? `${t('Lived or worked here')}: ${x.n.people.map(q => q.person).join(', ')}` : tr(x.n, 'story')).find(Boolean) || '';
+      const off = !inGoogle.has(p);
+      return `<li${off ? ' class="w-off"' : ''}><button data-i="${i}"><span class="w-num">${i + 1}</span><span><b>${esc(poiName(p))}</b><em>${esc(story)}</em></span></button></li>`;
+    }).join('')}</ol>
+    <p class="q-credit">${walkPrefs.stops && w.stops.length < walkPrefs.stops ? t('Fewer stops than asked: that is all the stories you chose.') + ' ' : ''}${w.stretched ? t('Longer than asked: few of the stories you chose lie that close.') + ' '
+      : w.length < walkPrefs.km * 600 ? t('Shorter than asked: the stories you chose lie close together.') + ' ' : ''}${t('Straight lines on the map; Google Maps shows the walking route.')}${inGoogle.size < w.stops.length
+      ? ' ' + t('Google Maps takes nine stops; the paler ones lie on the way.') : ''}</p>`;
+  markWalk();
+  walkEl.querySelector('.q-close').onclick = () => { walkEl.hidden = true; walkRoute = null; drawWalk(null); markWalk();
+    const u = new URL(location.href); u.searchParams.delete('walk'); history.replaceState(null, '', u); };
+  walkEl.querySelector('.w-change').onclick = openWalks;
+  walkEl.querySelector('.w-kml').onclick = () => downloadKml(w);
+  // On a phone the list folds to its title bar and the Google Maps button; a tap on the bar opens it again.
+  walkEl.querySelector('header').onclick = () => walkEl.classList.toggle('folded');
+  walkEl.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    const p = w.stops[+b.dataset.i], g = gidOf(p.bag);
+    if (phone.matches) walkEl.classList.add('folded');
+    flyTo(p.x, p.z, () => { if (g >= 0) pinCard(g, innerWidth / 3, innerHeight / 2); }, 330);
+  });
+}
+// A walk straight from a layer's page or from the graph: the stories of that layer, or one stop per graph group.
+function walkFromLayer(L) {
+  walkPrefs = { ...walkPrefs, layers: [L.id], custom: null, stops: 0 };
+  makeWalk();
+}
+function walkFromGroups(groups) {
+  // One stop per building of the selection: a story's stop where it has one, else the building under the name of
+  // its graph group (a person's several houses become several stops). Neighbours closer than 25 m merge later.
+  const seen = new Set(), custom = [];
+  for (const g of groups) for (const gid of g.gids) {
+    const b = building(gid), own = pois().find(p => p.bags.includes(b.bag));
+    const key = own ? own.bag : b.bag;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const w = wiki[b.wk];
+    custom.push(own ? { ...own, score: 1.5 + (w?.image ? 0.4 : 0) }
+      : { bag: b.bag, bags: [b.bag], x: b.x, z: b.z, name: (w && tr(w, 'label')) || g.label, notes: [], score: 1 + (w?.image ? 0.4 : 0) });
+  }
+  walkPrefs = { ...walkPrefs, custom, stops: Math.min(MAX_STOPS, custom.length) };
+  makeWalk();
+}
+function openWalks() {
+  renderWalkPlanner();
+  walksDlg.showModal();
+  if (!locationAsked && !walkPrefs.at) requestLocation();  // the walk starts where the walker is, if they agree
+}
+document.querySelector('.walks-open').onclick = () => { walkPrefs.custom = null; openWalks(); };
+walksDlg.querySelector('.about-close').onclick = () => walksDlg.close();
+walksDlg.addEventListener('click', e => { if (e.target === walksDlg) walksDlg.close(); });
+// A shared link restores the walk: ?walk=km~loop~x_z~layer.layer
+{
+  const q = new URLSearchParams(location.search).get('walk');
+  if (q) {
+    const [km, loop, at, ls, ns] = q.split('~');
+    const [x, z] = (at || '').split('_').map(Number);
+    walkPrefs = { km: +km || 3, loop: loop !== '0', start: 0, at: Number.isFinite(x) && Number.isFinite(z) ? [x, z] : null,
+      atLabel: t('Point on the map'), stops: +ns || 0, layers: (ls || '').split('.').filter(id => layers.some(L => L.id === id)) };
+    setTimeout(makeWalk, 0);
+  }
+}
+
 // ---------- Panel ----------
 const panelEl = document.getElementById('panel');
 const panel = document.getElementById('panel-body');
@@ -559,6 +1043,7 @@ setCollapsed(phone.matches);
 phone.addEventListener('change', () => setCollapsed(phone.matches));
 
 const ICON = {
+  'Buildings today': '<path d="M2.5 14.5h11"/><rect x="3" y="8" width="2.6" height="6.5"/><rect x="6.7" y="4" width="2.6" height="10.5"/><rect x="10.4" y="6" width="2.6" height="8.5"/>',
   'Люди и события': '<circle cx="8" cy="5" r="2.6"/><path d="M3 14.5c.4-3 2.4-4.6 5-4.6s4.6 1.6 5 4.6"/>',
   'Город': '<path d="M2 14.5h12"/><path d="M3 14.5V6h4v8.5M7 14.5V3h6v11.5"/><path d="M9 5.5h2M9 8h2M9 10.5h2"/>',
   'Архитектура': '<path d="M2 5.5 8 2l6 3.5z"/><path d="M3.5 6v7M6.5 6v7M9.5 6v7M12.5 6v7M2 14.5h12"/>',
@@ -574,6 +1059,15 @@ let activeLayer = null;
 const SECTION_ORDER = ['Люди и события', 'Город', 'Архитектура', 'Империя', 'Советский город', 'Память'];
 const groupOn = {};
 
+// Storeys are a view of the buildings themselves; it lives in the layers list.
+function setBuildingView(m) {
+  document.querySelectorAll('.modes button[data-mode]').forEach(x => x.setAttribute('aria-pressed', x.dataset.mode === String(MODE.layers)));
+  activeLayer = null;
+  uniforms.uGroupBit.value = Array(MAX_GROUPS).fill(-1);
+  uniforms.uMode.value = m;
+  if (!phone.matches) setCollapsed(false);
+  renderPanel(); drawHist();
+}
 function renderPanel() {
   const mode = uniforms.uMode.value;
   if (mode === MODE.period) {
@@ -597,10 +1091,11 @@ function renderPanel() {
       renderPanel(); drawHist();
     });
   } else if (mode === MODE.floors) {
-    panel.innerHTML = `<h2>Этажность</h2>
+    panel.innerHTML = `<button class="back">Все слои</button><h2 class="layer-title">${sectionIcon('Buildings today')}Этажность</h2>
       <div class="ramp" style="background:linear-gradient(90deg,#dbe3e6,#7da8bf,#2b5c8c,#0d1a40)"></div>
       <div class="ramp-scale"><span>1</span><span>3</span><span>8</span><span>20</span><span>40+</span></div>
       <p class="note">Этажность указана в OpenStreetMap у ${fmt(config.stats.floorsTagged)} зданий; у остальных ${fmt(config.stats.floorsDefault + config.stats.floorsHeight)} она оценена по высоте или типу здания.</p>`;
+    panel.querySelector('.back').onclick = () => { uniforms.uMode.value = MODE.layers; renderPanel(); drawHist(); };
   } else if (!activeLayer) {
     const sections = [...new Set(layers.map(L => L.section))].sort((a, b) => SECTION_ORDER.indexOf(a) - SECTION_ORDER.indexOf(b));
     panel.innerHTML = `<nav class="section-nav" aria-label="Разделы">${sections.map(sec => `
@@ -609,13 +1104,19 @@ function renderPanel() {
       <button class="layer" data-id="${L.id}">
         <b>${esc(L.title)}</b><span class="n">${fmt(L.count)}</span><span class="era">${esc(L.era)}</span>
       </button>`).join('')}</div>`).join('');
-    panel.querySelectorAll('.layer').forEach(b => b.onclick = () => setLayer(layers.find(l => l.id === b.dataset.id)));
+    panel.querySelector('.section-nav').insertAdjacentHTML('afterend', `<h2 class="section" id="sec-today">${sectionIcon('Buildings today')}Здания сегодня</h2>
+      <div class="layers"><button class="layer view" data-view="floors"><b>Этажность</b><span class="n">${fmt(config.stats.buildings)}</span><span class="era"></span></button></div>`);
+    panel.querySelector('.section-nav').insertAdjacentHTML('afterbegin', `<button data-sec="today" title="Здания сегодня" aria-label="Здания сегодня">${sectionIcon('Buildings today')}</button>`);
+    panel.querySelector('.layer.view').onclick = () => setBuildingView(MODE.floors);
+    panel.querySelectorAll('.layer:not(.view)').forEach(b => b.onclick = () => setLayer(layers.find(l => l.id === b.dataset.id)));
     panel.querySelectorAll('.section-nav button').forEach(b => b.onclick = () =>
-      panel.querySelector(`#sec-${sections.indexOf(b.dataset.sec)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      panel.querySelector(b.dataset.sec === 'today' ? '#sec-today' : `#sec-${sections.indexOf(b.dataset.sec)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   } else {
     panel.innerHTML = `<button class="back">Все слои</button>
-      <h2 class="layer-title">${sectionIcon(activeLayer.section)}${esc(activeLayer.title)}</h2><p class="layer-era">${activeLayer.era}</p>${layerDetail(activeLayer)}`;
+      <h2 class="layer-title">${sectionIcon(activeLayer.section)}${esc(activeLayer.title)}</h2><p class="layer-era">${activeLayer.era}</p>
+      ${Object.values(activeLayer.notes || {}).some(n => n.at) ? `<button class="make-walk">Построить прогулку</button>` : ''}${layerDetail(activeLayer)}`;
     panel.querySelector('.back').onclick = () => setLayer(null);
+    panel.querySelector('.make-walk')?.addEventListener('click', () => { if (phone.matches) setCollapsed(true); walkFromLayer(activeLayer); });
     panel.querySelectorAll('.story').forEach(b => b.onclick = () => {
       const n = activeLayer.notes[b.dataset.bag];
       flyTo(n.at[0], n.at[1], () => {
@@ -652,9 +1153,9 @@ function setLayer(L) {
   renderPanel(); drawHist();
 }
 
-document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
+document.querySelectorAll('.modes button[data-mode]').forEach(b => b.onclick = () => {
   uniforms.uMode.value = +b.dataset.mode;
-  document.querySelectorAll('.modes button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.querySelectorAll('.modes button[data-mode]').forEach(x => x.setAttribute('aria-pressed', x === b));
   renderPanel(); drawHist();
 });
 
@@ -807,7 +1308,7 @@ const fromHash = location.hash.match(/layer=([\w-]+)/)?.[1];
 const linked = fromHash && layers.find(L => L.id === fromHash);
 if (linked) {
   uniforms.uMode.value = MODE.layers;
-  document.querySelectorAll('.modes button').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.mode === MODE.layers)));
+  document.querySelectorAll('.modes button[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.mode === MODE.layers)));
   setLayer(linked);
 } else {
   renderPanel();
