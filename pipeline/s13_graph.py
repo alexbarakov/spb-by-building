@@ -23,6 +23,7 @@ ARCHITECT_MIN_BUILDINGS = 3
 
 TEXT_LAYERS = ["pushkin", "dostoevsky", "silver", "people", "revolution", "blockade", "eggs", "paradnye", "bars",
                "owners"]
+MAX_ARCHITECTS = 20
 
 
 def main():
@@ -110,6 +111,15 @@ def main():
                 if key in where:
                     links.append(dict(e=aid, bag=key, text=f"{e.get('label') or 'Здание'}: архитектор {label}.",
                                       source=src or "https://www.wikidata.org", via="Архитекторы (Wikidata)"))
+
+    # At most MAX_ARCHITECTS architects, those with the most buildings in the graph; the rest drop out with their links.
+    arch_deg = {}
+    for l in links:
+        if any(n["id"] == l["e"] and n["type"] == "architect" for n in nodes):
+            arch_deg.setdefault(l["e"], set()).add(l["bag"])
+    keep = set(sorted(arch_deg, key=lambda a: -len(arch_deg[a]))[:MAX_ARCHITECTS])
+    nodes = [n for n in nodes if n["type"] != "architect" or n["id"] in keep]
+    links = [l for l in links if l["e"] not in arch_deg or l["e"] in keep]
 
     names = {}
     for key, name, *_ in texts:
