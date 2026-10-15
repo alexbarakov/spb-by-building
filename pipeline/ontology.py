@@ -7,7 +7,7 @@
 (id, тип, подпись, годы, регулярное выражение по русскому тексту)
 """
 
-PERSON, EVENT, ORG = "person", "event", "organisation"
+PERSON, EVENT, ORG, ARCH = "person", "event", "organisation", "architect"
 
 ENTITIES = [
     # писатели и поэты

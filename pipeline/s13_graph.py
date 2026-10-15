@@ -101,7 +101,7 @@ def main():
         label = " ".join(reversed([p.strip() for p in arch.split(",", 1)])) if "," in arch else arch
         aid = "arch:" + re.sub(r"[^\w]+", "-", label.lower()).strip("-")
         if aid not in have:
-            nodes.append(dict(id=aid, type=PERSON, label=label, years="", desc="архитектор"))
+            nodes.append(dict(id=aid, type="architect", label=label, years="", desc="архитектор"))
             have.add(aid)
         for k, keys in items.items():
             e = wiki_all[k]
