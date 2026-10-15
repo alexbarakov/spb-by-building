@@ -1355,7 +1355,10 @@ function renderPanel() {
       <div class="layers"><button class="layer view" data-view="floors"><b>Этажность</b><span class="n">${fmt(config.stats.buildings)}</span><span class="era"></span></button></div>`);
     panel.querySelector('.section-nav').insertAdjacentHTML('afterbegin', `<button data-sec="today" title="Здания сегодня" aria-label="Здания сегодня">${sectionIcon('Buildings today')}</button>`);
     panel.querySelector('.layer.view').onclick = () => setBuildingView(MODE.floors);
-    panel.querySelectorAll('.layer:not(.view)').forEach(b => b.onclick = () => setLayer(layers.find(l => l.id === b.dataset.id)));
+    panel.querySelectorAll('.layer:not(.view)').forEach(b => b.onclick = () => {
+      const L = layers.find(l => l.id === b.dataset.id);
+      setLayer(L); fitToLayer(L);
+    });
     panel.querySelectorAll('.section-nav button').forEach(b => b.onclick = () =>
       panel.querySelector(b.dataset.sec === 'today' ? '#sec-today' : `#sec-${sections.indexOf(b.dataset.sec)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   } else {
@@ -1373,7 +1376,7 @@ function renderPanel() {
     });
     panel.querySelectorAll('.swatch').forEach(b => b.onclick = () => {
       groupOn[b.dataset.bit] = groupOn[b.dataset.bit] === false;
-      setLayer(activeLayer);
+      setLayer(activeLayer); fitToLayer(activeLayer);
     });
   }
 }
@@ -1389,6 +1392,26 @@ function layerDetail(L) {
   return `<div class="layer-detail"><p>${L.text}</p>${groups}${stories}
     ${L.caveat ? `<p class="caveat">${L.caveat}</p>` : ''}
     <a href="${L.source.url}" target="_blank" rel="noopener">${L.source.label}</a></div>`;
+}
+
+function fitToLayer(L) {
+  if (!L) return;
+  // The attribute table here has no positions: frame the buildings the layer tells stories about.
+  const pts = Object.values(L.notes || {}).filter(n => n.at);
+  const xs = pts.map(n => n.at[0]), zs = pts.map(n => n.at[1]);
+  if (!xs.length) return;
+  const cut = a => { a.sort((p, q) => p - q); const k = a.length > 50 ? Math.floor(a.length * 0.02) : 0; return [a[k], a[a.length - 1 - k]]; };
+  const [x0, x1] = cut(xs), [z0, z1] = cut(zs);
+  // On a wide screen the panel covers the left of the view: frame the points in the part to its right.
+  const pr = !phone.matches && !panelEl.classList.contains('collapsed') ? panelEl.getBoundingClientRect().right : 0;
+  const free = Math.max(0.4, 1 - pr / innerWidth);
+  const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const span = Math.max(z1 - z0, (x1 - x0) / (camera.aspect * free), 120);
+  const distance = Math.min(7000, Math.max(320, span / 2 / half * 1.35));
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
+  const shift = (pr / innerWidth / 2) * 2 * distance * half * camera.aspect;
+  const cx = (x0 + x1) / 2 - right.x * shift, cz = (z0 + z1) / 2 - right.z * shift;
+  if (Number.isFinite(cx) && Number.isFinite(cz) && Number.isFinite(distance)) flyTo(cx, cz, null, distance);
 }
 
 function setLayer(L) {
