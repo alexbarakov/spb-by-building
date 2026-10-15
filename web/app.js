@@ -1297,9 +1297,21 @@ const phone = matchMedia('(max-width: 720px)');
 function setCollapsed(c) {
   panelEl.classList.toggle('collapsed', c);
   sheetHandle.setAttribute('aria-expanded', String(!c));
-  sheetHandle.textContent = c ? 'Показать легенду' : 'Скрыть легенду';
+  sheetHandle.textContent = 'Легенда';
+  sheetHandle.setAttribute('aria-label', c ? 'Показать легенду' : 'Скрыть легенду');
 }
-sheetHandle.onclick = () => setCollapsed(!panelEl.classList.contains('collapsed'));
+let sheetSwiped = false;
+sheetHandle.onclick = () => { if (sheetSwiped) { sheetSwiped = false; return; } setCollapsed(!panelEl.classList.contains('collapsed')); };
+// On a phone the open legend folds when the map is touched, or when its bar is swiped down.
+let sheetDown = null;
+sheetHandle.addEventListener('pointerdown', e => { sheetDown = e.clientY; });
+sheetHandle.addEventListener('pointerup', e => {
+  if (sheetDown !== null && e.clientY - sheetDown > 30) { setCollapsed(true); sheetSwiped = true; }
+  sheetDown = null;
+});
+document.getElementById('scene')?.addEventListener('pointerdown', () => {
+  if (phone.matches && !panelEl.classList.contains('collapsed')) setCollapsed(true);
+});
 setCollapsed(phone.matches);
 phone.addEventListener('change', () => setCollapsed(phone.matches));
 
