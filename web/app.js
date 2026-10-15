@@ -33,6 +33,7 @@ const RU = {
  "Choose what interests you, where you start and how far you want to go. The walk links the buildings with stories on the way.": "Выберите, что вам интересно, откуда начать и как далеко идти. Маршрут свяжет дома с историями по пути.",
  "Click the map where the walk should start.": "Нажмите на карту там, где начать прогулку.",
  "Close": "Закрыть",
+ "From the graph": "Из графа", "Back to the graph": "Назад к графу", "Generate a walk": "Построить прогулку", "Graph": "Граф",
  "Download the walk with its stories (KML), for Google My Maps: Create a new map, then Import.": "Скачать прогулку с историями (KML) для Google Мои карты: создайте карту и выберите «Импорт».",
  "Fewer stops than asked: that is all the stories you chose.": "Остановок меньше, чем просили: других историй по выбранным темам нет.",
  "Google Maps takes nine stops; the paler ones lie on the way.": "Google Карты принимают девять точек; бледные остановки лежат по пути.",
@@ -67,7 +68,38 @@ const RU = {
  "Generate a walk": "Построить прогулку",
  "Buildings today": "Здания сегодня",
  "All layers": "Все слои",
- "Storeys": "Этажность"
+ "Storeys": "Этажность",
+ "A hint may help.": "Подсказка может помочь.",
+ "Any of {n} buildings counts.": "Подойдёт любое из {n} зданий.",
+ "Best": "Лучший результат",
+ "Continue": "Продолжить",
+ "Found!": "Найдено!",
+ "Hint": "Подсказка",
+ "Next riddle": "Следующая загадка",
+ "Not this one, but very close.": "Не то, но совсем рядом.",
+ "Not this one. Far off.": "Не то. Далеко.",
+ "Not this one. Still a few streets away.": "Не то. Ещё несколько улиц.",
+ "Not this one. You are getting warm.": "Не то. Уже теплее.",
+ "One of the buildings that answer the riddle.": "Одно из зданий, которые подходят под загадку.",
+ "Open the layer": "Открыть слой",
+ "Photo": "Фото",
+ "Play again": "Ещё раз",
+ "Quest complete": "Квест пройден",
+ "Quests": "Квесты",
+ "Riddles hidden in the city. Find each building on the map, using its colours and layers, and click it. Every riddle is worth three tiles; hints cost one.": "Загадки, спрятанные в городе. Найдите каждое здание на карте с помощью её цветов и слоёв и нажмите на него. Загадка стоит три очка, подсказка отнимает одно.",
+ "Right": "Верно",
+ "See all quests": "Все квесты",
+ "Show me": "Показать",
+ "Shown, not found: no tiles.": "Показано, а не найдено: без очков.",
+ "Today’s photo of the building to find": "Сегодняшнее фото здания, которое нужно найти",
+ "Without a single hint.": "Без единой подсказки.",
+ "Your tiles": "Ваши очки",
+ "Easy": "Лёгкий",
+ "Medium": "Средний",
+ "Hard": "Трудный",
+ "Colour by period": "Раскрасить по эпохам",
+ "Colour by floors": "Раскрасить по этажности",
+ "Colour by energy label": "Раскрасить по энергометкам"
 };
 const t = s => RU[s] || s;
 const tr = (o, k) => o?.[k];
@@ -452,6 +484,7 @@ function building(gid) {
   return {
     osm: osm > 0 ? `way/${osm}` : `relation/${-osm}`,
     id: String(osm),
+    bag: String(osm),
     height: attrs.getUint16(o + 8, true) / 10,
     fsrc: attrs.getUint8(o + 10),
     flag: attrs.getUint8(o + 11),
@@ -583,6 +616,7 @@ canvas.addEventListener('pointerup', e => {
   }
   const gid = pick(e.clientX, e.clientY);
   pinCard(gid === pinnedGid ? -1 : gid, e.clientX, e.clientY);
+  questClick(gid);
 });
 canvas.addEventListener('pointerleave', () => { pointer = null; if (pinnedGid < 0) card.hidden = true; uniforms.uHover.value = -1; });
 
@@ -616,7 +650,8 @@ function stepFlight(now) {
 // Walk shows as on while a walk is open; on a phone the timeline steps aside.
 function markWalk() {
   document.querySelector('.walks-open').setAttribute('aria-pressed', String(!!walkRoute));
-  document.body.classList.toggle('walking', !!walkRoute);
+  document.querySelector('.quests-open')?.setAttribute('aria-pressed', String(!!quest));
+  document.body.classList.toggle('walking', !!walkRoute || !!quest);
 }
 
 // Local metres <-> WGS84 through UTM zone 36N (EPSG:32636), the frame the pipeline works in.
@@ -1025,6 +1060,214 @@ walksDlg.addEventListener('click', e => { if (e.target === walksDlg) walksDlg.cl
       atLabel: t('Point on the map'), stops: +ns || 0, layers: (ls || '').split('.').filter(id => layers.some(L => L.id === id)) };
     setTimeout(makeWalk, 0);
   }
+}
+
+// ---------- Quests ----------
+// Chains of riddles (pipeline/quests.py); each is solved by finding the building on the map and clicking it.
+// A riddle is worth three tiles; every hint costs one, "Show me" all of them. Progress stays in this browser.
+let quests = [], quest = null, step = 0, hintsShown = 0, solved = false, misses = 0, questFolded = false, revealed = false;
+fetch('data/quests.json').then(r => r.ok ? r.json() : []).then(q => { quests = q; }).catch(() => {});
+const questEl = document.getElementById('quest');
+const questsDlg = document.getElementById('quests');
+const LEVEL = ['', 'Easy', 'Medium', 'Hard'];
+const store = () => { try { return JSON.parse(localStorage.getItem('quests2') || '{}'); } catch { return {}; } };
+function save(id, patch) {
+  try { const p = store(); p[id] = { ...(p[id] || {}), ...patch }; localStorage.setItem('quests2', JSON.stringify(p)); } catch {}
+}
+const tiles = (n, of) => `<span class="q-tiles" aria-label="${n} / ${of}">${Array.from({ length: of }, (_, i) =>
+  `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;
+const levelMark = lv => `<span class="q-level l${lv}">${tiles(lv, 3)}${t(LEVEL[lv])}</span>`;
+
+function renderQuestList() {
+  const p = store();
+  const total = quests.reduce((n, q) => n + (p[q.id]?.best || 0), 0), max = quests.length * 15;
+  document.getElementById('quests-body').innerHTML = `
+    <h2 id="quests-title">${t('Quests')}</h2>
+    <p class="q-lede">${t('Riddles hidden in the city. Find each building on the map, using its colours and layers, and click it. Every riddle is worth three tiles; hints cost one.')}</p>
+    <p class="q-score">${t('Your tiles')}: <b>${total}</b> / ${max}</p>
+    <ul class="q-grid">${quests.map(q => {
+      const st = p[q.id] || {}, done = Math.min(st.step || 0, q.steps.length), complete = done >= q.steps.length;
+      const label = complete ? t('Play again') : done ? t('Continue') : t('Start');
+      return `<li class="q-tile l${q.level}${complete ? ' complete' : ''}">
+        ${levelMark(q.level)}
+        <h3>${esc(L10(q.title))}</h3>
+        <p>${esc(L10(q.intro))}</p>
+        <footer><span class="q-progress">${complete ? `${t('Best')}: ${st.best || 0} / 15` : `${done} / ${q.steps.length}`}</span>
+          <button class="q-start" data-q="${q.id}">${label}</button></footer></li>`;
+    }).join('')}</ul>`;
+  questsDlg.querySelectorAll('.q-start').forEach(b => b.onclick = () => {
+    const q = quests.find(q => q.id === b.dataset.q), st = store()[q.id] || {};
+    const fresh = !st.step || st.step >= q.steps.length;
+    startQuest(q, fresh ? 0 : st.step, fresh ? 0 : st.score || 0);
+    questsDlg.close();
+  });
+}
+function openQuests() { renderQuestList(); questsDlg.showModal(); }
+document.querySelector('.quests-open').onclick = openQuests;
+questsDlg.querySelector('.about-close').onclick = () => questsDlg.close();
+questsDlg.addEventListener('click', e => { if (e.target === questsDlg) questsDlg.close(); });
+
+let score = 0;
+function startQuest(q, n, sc = 0) {
+  quest = q; step = n; score = sc;
+  resetStep();
+  save(q.id, { step: n, score: sc });
+  renderQuest();
+}
+function resetStep() { hintsShown = 0; solved = false; misses = 0; revealed = false; questFolded = false; }
+function closeQuest() { quest = null; questEl.hidden = true; markWalk(); }
+function setModeNamed(name) {
+  if (name === 'floors' || name === 'energy') { setBuildingView(MODE[name]); return; }
+  const m = { period: MODE.period, layers: MODE.layers }[name];
+  document.querySelector(`.modes button[data-mode="${m}"]`)?.click();
+}
+function showLayer(id) {
+  const L = layers.find(L => L.id === id);
+  if (!L) return;
+  setModeNamed('layers');
+  setLayer(L);
+  if (phone.matches) setCollapsed(false);
+}
+function isAnswer(gid, a) {
+  if (gid < 0) return false;
+  const b = building(gid);
+  if (a.bags) return a.bags.includes(b.bag);
+  if (a.before && !(b.year < a.before)) return false;
+  if (a.after && !(b.year > a.after)) return false;
+  if (a.bits && !a.bits.every(bit => b.groups.some(g => g.bit === bit))) return false;
+  return true;
+}
+// The answer's buildings: listed for a story, found by scanning the city for a rule (once per riddle).
+let answerCache = null;
+function answerGids(a) {
+  if (answerCache?.a === a) return answerCache.g;
+  const g = a.bags ? a.bags.map(gidOf).filter(g => g >= 0)
+    : Array.from({ length: config.stats.buildings }, (_, i) => i).filter(i => isAnswer(i, a));
+  answerCache = { a, g };
+  return g;
+}
+const MODE_LABEL = { period: 'Colour by period', floors: 'Colour by floors', energy: 'Colour by energy label' };
+const stepTiles = () => revealed ? 0 : Math.max(1, 3 - hintsShown);
+function renderQuest() {
+  if (!quest) return;
+  const s = quest.steps[step], last = step === quest.steps.length - 1;
+  const hints = s.hints.slice(0, hintsShown).map(h => `<li>${esc(L10(h))}</li>`).join('');
+  const im = s.photo, moreHints = hintsShown < s.hints.length;
+  questEl.className = `quest l${quest.level}${solved ? ' solved' : ''}${questFolded && !solved ? ' folded' : ''}`;
+  questEl.innerHTML = `
+    <button class="q-close" aria-label="${t('Close')}">×</button>
+    <header><b>${esc(L10(quest.title))}</b>${levelMark(quest.level)}</header>
+    <div class="q-steps">${quest.steps.map((_, i) => `<i class="${i < step || (i === step && solved) ? 'done' : i === step ? 'now' : ''}"></i>`).join('')}
+      <span>${step + 1} / ${quest.steps.length}</span></div>
+    ${im && !solved ? `<figure class="q-photo"><img src="${esc(im.thumb)}" alt="${t('Today’s photo of the building to find')}"></figure>
+      <p class="q-credit">${t('Photo')}: ${link(im.page, [im.artist, im.license].filter(Boolean).join(', ') || 'Wikimedia Commons')}</p>` : ''}
+    <p class="q-riddle">${esc(L10(s.riddle))}</p>
+    ${s.count ? `<p class="q-count">${t('Any of {n} buildings counts.').replace('{n}', fmt(s.count))}</p>` : ''}
+    ${hints ? `<ul class="q-hints">${hints}</ul>` : ''}
+    ${solved ? foundHtml(s) : `<p class="q-feedback"></p>`}
+    <div class="q-actions">${solved
+      ? (last ? `<button class="primary q-list">${t('See all quests')}</button>`
+              : `<button class="primary q-next">${t('Next riddle')}</button>`)
+      : `${moreHints ? `<button class="q-hint">${t('Hint')} <small>−1</small></button>` : ''}
+         ${s.layer ? `<button class="q-layer">${t('Open the layer')}</button>` : ''}${s.mode ? `<button class="q-mode">${t(MODE_LABEL[s.mode])}</button>` : ''}
+         ${s.answer.bags ? `<button class="q-reveal">${t('Show me')}</button>` : ''}
+         <span class="q-worth">${tiles(stepTiles(), 3)}</span>`}</div>`;
+  questEl.hidden = false;
+  markWalk();
+  // On a phone the riddle folds to its title bar so the map stays usable; a tap on the bar opens it again.
+  questEl.querySelector('header').onclick = () => { questFolded = !questFolded; questEl.classList.toggle('folded', questFolded); };
+  questEl.querySelector('.q-close').onclick = closeQuest;
+  const foldOnPhone = () => { if (phone.matches) { questFolded = true; questEl.classList.add('folded'); } };
+  questEl.querySelector('.q-hint')?.addEventListener('click', () => { hintsShown++; renderQuest(); });
+  questEl.querySelector('.q-layer')?.addEventListener('click', () => { showLayer(s.layer); foldOnPhone(); });
+  questEl.querySelector('.q-mode')?.addEventListener('click', () => { setModeNamed(s.mode); foldOnPhone(); });
+  questEl.querySelector('.q-reveal')?.addEventListener('click', () => {
+    const g = answerGids(s.answer)[0];
+    if (g === undefined) return;
+    revealed = true;
+    const b = building(g);
+    flyTo(b.x, b.z, () => solve(g), 420);
+  });
+  questEl.querySelector('.q-next')?.addEventListener('click', () => { step++; resetStep(); answerCache = null; save(quest.id, { step, score }); renderQuest(); });
+  questEl.querySelector('.q-list')?.addEventListener('click', () => { closeQuest(); openQuests(); });
+}
+function foundHtml(s) {
+  const f = s.found, got = stepTiles(), last = step === quest.steps.length - 1;
+  const head = `<div class="q-stamp" aria-hidden="true">${t('Found!')}</div>`;
+  const tally = `<p class="q-earned">${tiles(got, 3)} ${got === 3 ? t('Without a single hint.') : revealed ? t('Shown, not found: no tiles.') : ''}</p>`;
+  const end = last ? `<p class="q-final">${t('Quest complete')}: <b>${score}</b> / ${quest.steps.length * 3}</p>` : '';
+  if (!f) return `<div class="q-found">${head}<b>${t('Right')}</b><p>${t('One of the buildings that answer the riddle.')}</p>${tally}${end}</div>`;
+  return `<div class="q-found">${head}<b>${esc(LANG === 'nl' ? (f.name_nl || f.name) : f.name)}</b>
+    <p>${esc(LANG === 'nl' ? (f.story_nl || f.story) : f.story)} ${link(f.source, t('Source'))}</p>${tally}${end}</div>`;
+}
+function solve(gid) {
+  solved = true;
+  questFolded = false;
+  score += stepTiles();
+  const st = store()[quest.id] || {};
+  const patch = { step: step + 1, score };
+  if (step === quest.steps.length - 1) patch.best = Math.max(st.best || 0, score);
+  save(quest.id, patch);
+  if (gid >= 0 && pinnedGid !== gid) uniforms.uSelected.value = gid;  // "Show me" marks it; a click has pinned it already
+  renderQuest();
+}
+// Called on every click on the map while a quest is open.
+function questClick(gid) {
+  if (!quest || solved || gid < 0) return;
+  const s = quest.steps[step];
+  if (isAnswer(gid, s.answer)) { solve(gid); return; }
+  misses++;
+  const fb = questEl.querySelector('.q-feedback');
+  if (!fb) return;
+  const b = building(gid), targets = answerGids(s.answer);
+  const d = targets.length ? Math.min(...targets.map(g => { const a = building(g); return Math.hypot(a.x - b.x, a.z - b.z); })) : Infinity;
+  let msg = d < 60 ? t('Not this one, but very close.') : d < 250 ? t('Not this one. You are getting warm.')
+    : d < 800 ? t('Not this one. Still a few streets away.') : t('Not this one. Far off.');
+  if (misses >= 3 && hintsShown < s.hints.length) msg += ' ' + t('A hint may help.');
+  fb.textContent = msg;
+  fb.className = `q-feedback ${d < 60 ? 'hot' : d < 250 ? 'warm' : 'cold'}`;
+  void fb.offsetWidth; fb.classList.add('miss');
+}
+
+// ---------- From the graph ----------
+// graph.html opens the map with ./?focus=<id>,<id>: the buildings of those people, events or places light up,
+// each selection in its own colour, and the rest of the city turns into a white model.
+const focusEl = document.getElementById('focus');
+const focusIds = (new URLSearchParams(location.search).get('focus') || '').split(',').filter(Boolean);
+if (focusIds.length) fetch('data/graph.json').then(r => r.json()).then(G => showFocus(G, focusIds)).catch(() => {});
+function showFocus(G, ids) {
+  const groups = [];
+  ids.forEach((id, i) => {
+    const node = G.nodes.find(n => n.id === id), place = G.places[id];
+    if (!node && !place) return;
+    const bags = place ? place.bags : G.links.filter(l => l.e === id).flatMap(l => G.places[l.p].bags);
+    const label = place ? place.name : node.label;
+    groups.push({ label, color: i % GROUP_COLORS.length, gids: [...new Set(bags)].map(gidOf).filter(g => g >= 0) });
+  });
+  const gids = [], grp = [];
+  for (const g of groups) for (const gid of g.gids) {
+    if (!gids.includes(gid) && gids.length < FOCUS_MAX) { gids.push(gid); grp.push(g.color); }
+  }
+  if (!gids.length) return;
+  uniforms.uFocus.value = [...gids, ...Array(FOCUS_MAX - gids.length).fill(-1)];
+  uniforms.uFocusGroup.value = [...grp, ...Array(FOCUS_MAX - grp.length).fill(0)];
+  uniforms.uFocusN.value = gids.length;
+  const pts = gids.map(building);
+  const cx = pts.reduce((a, b) => a + b.x, 0) / pts.length, cz = pts.reduce((a, b) => a + b.z, 0) / pts.length;
+  const spread = Math.max(...pts.map(b => Math.hypot(b.x - cx, b.z - cz)));
+  flyTo(cx, cz, null, Math.min(4200, Math.max(380, spread * 2.4)));
+  const back = `graph.html?select=${encodeURIComponent(ids.join(','))}`;
+  focusEl.innerHTML = `<header><b>${t('From the graph')}</b><button class="f-close" aria-label="${t('Close')}">×</button></header>
+    <ul>${groups.map(g => `<li><i style="background:${GROUP_COLORS[g.color]}"></i><span>${esc(g.label)}</span>
+      <small>${g.gids.length}</small></li>`).join('')}</ul>
+    <div class="f-actions"><button class="make-walk">${t('Generate a walk')}</button><a class="f-back" href="${back}">${t('Back to the graph')}</a></div>`;
+  focusEl.hidden = false;
+  focusEl.querySelector('.make-walk').onclick = () => { focusEl.hidden = true; walkFromGroups(groups); };
+  focusEl.querySelector('.f-close').onclick = () => {
+    uniforms.uFocusN.value = 0;
+    focusEl.hidden = true;
+    const u = new URL(location.href); u.searchParams.delete('focus'); history.replaceState(null, '', u);
+  };
 }
 
 // ---------- Panel ----------

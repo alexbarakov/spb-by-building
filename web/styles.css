@@ -311,3 +311,128 @@ h1 { margin: 0; font: 700 clamp(34px, 4.4vw, 56px)/.95 "PT Serif", Georgia, seri
 @media (max-width: 720px) { .panel .back { top: 0; margin-top: 0; } }
 .section-nav { position: sticky; top: -14px; background: var(--paper); padding: 6px 0; z-index: 1; }
 .section-nav button { width: 30px; height: 30px; }
+
+/* ---- quests, ported from LAYRS: Delft ---- */
+.q-tiles { display: inline-flex; gap: 2px; vertical-align: -1px; }
+.q-tiles i { width: 9px; height: 9px; border-radius: 2px; border: 1.5px solid var(--red); background: transparent; }
+.q-tiles i.on { background: var(--red); }
+.q-level { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--red); }
+.quests { width: min(1000px, calc(100vw - 32px)); }
+.quests article { padding: 22px 26px 24px; }
+.quests h2 { margin: 0; }
+.quests .q-lede { max-width: 72ch; margin: 6px 0 0; font-size: 13px; line-height: 1.5; }
+.quests .q-score { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.quests .q-score b { color: var(--red); font-size: 17px; }
+.quests .q-grid { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.quests .q-tile { margin: 0; max-width: none; line-height: 1.35; }
+.q-tile { --fill: .06; position: relative; display: flex; flex-direction: column; gap: 4px; padding: 15px 14px 12px;
+  border: 1px solid #c9d3ea; border-radius: 3px; outline: 1px solid #c9d3ea; outline-offset: -6px;
+  /* the painted corners of a Delft tile, over a wash as deep as the quest is hard */
+  background: radial-gradient(circle at 0 0, var(--red) 0 8px, transparent 9px),
+    radial-gradient(circle at 100% 0, var(--red) 0 8px, transparent 9px),
+    radial-gradient(circle at 0 100%, var(--red) 0 8px, transparent 9px),
+    radial-gradient(circle at 100% 100%, var(--red) 0 8px, transparent 9px),
+    rgb(31 63 154 / var(--fill)); }
+.q-tile.l2 { --fill: .16; }
+.q-tile.l3 { --fill: .3; }
+.q-tile h3 { margin: 2px 0 0; font-size: 14px; line-height: 1.25; letter-spacing: -0.01em; }
+.q-tile p { margin: 0; color: #4b5560; font-size: 12px; line-height: 1.4; flex: 1;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.q-tile footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; gap: 6px; }
+.q-tile .q-progress { font-size: 11px; color: #4b5560; font-variant-numeric: tabular-nums; }
+.q-tile.complete::after { content: "✓"; position: absolute; top: 9px; right: 12px; color: var(--red); font-weight: 800; }
+.quests .q-start { border: 0; background: var(--red); color: var(--paper); border-radius: 999px; padding: 4px 11px;
+  cursor: pointer; font-size: 11px; font-weight: 700; }
+.q-tile.complete .q-start { background: var(--paper); color: var(--red); box-shadow: inset 0 0 0 1.5px var(--red); }
+.quest { position: fixed; z-index: 11; right: var(--gutter); bottom: 132px; width: 340px; max-height: calc(100vh - 290px);
+  overflow-y: auto; background: var(--paper); border-radius: 12px; box-shadow: 0 2px 0 var(--red), 0 10px 30px rgba(20, 40, 100, .14); }
+.quest header { cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 11px 44px 10px 16px;
+  background: var(--red); color: var(--paper); border-radius: 12px 12px 0 0; }
+.quest header b { font-size: 13px; }
+.quest header .q-level { color: rgba(255, 255, 255, .85); margin-left: auto; }
+.quest header .q-tiles i { border-color: rgba(255, 255, 255, .85); }
+.quest header .q-tiles i.on { background: rgba(255, 255, 255, .85); }
+.quest .q-close { position: absolute; top: 5px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: none; cursor: pointer; font-size: 18px; color: var(--paper); z-index: 1; }
+.quest .q-steps { display: flex; align-items: center; gap: 5px; padding: 10px 16px 0; }
+.quest .q-steps i { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #c9d3ea; }
+.quest .q-steps i.done { background: var(--red); border-color: var(--red); }
+.quest .q-steps i.now { border-color: var(--red); }
+.quest .q-steps span { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.quest .q-photo { margin: 10px 16px 0; overflow: hidden; height: 150px; border-radius: 6px; background: var(--sky); }
+.quest .q-photo img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.35); display: block; }
+.quest .q-credit { font-size: 11px; color: var(--muted); padding: 4px 16px 0; margin: 0; }
+.quest .q-credit a { color: inherit; }
+.quest .q-riddle { margin: 0; padding: 10px 16px 0; font-size: 15px; line-height: 1.5; }
+.quest .q-count { margin: 6px 16px 0; font-size: 12px; color: var(--red); font-weight: 600; }
+.quest .q-hints { margin: 8px 16px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.quest .q-hints li { color: #3e4448; font-size: 13px; line-height: 1.45; padding-left: 10px; border-left: 2px solid var(--red); }
+.quest .q-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 16px 14px; }
+.quest .q-actions button { border: 1px solid var(--rule); background: var(--paper); border-radius: 999px;
+  padding: 5px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.quest .q-actions button small { color: var(--muted); font-weight: 500; }
+.quest .q-actions .primary { background: var(--red); border-color: var(--red); color: var(--paper); }
+.quest .q-worth { margin-left: auto; }
+.quest .q-feedback { margin: 0; padding: 8px 16px 0; font-size: 13px; color: var(--muted); min-height: 1.4em; }
+.quest .q-feedback.hot { color: #c2410c; font-weight: 600; }
+.quest .q-feedback.warm { color: #b7791f; }
+.quest .q-feedback.cold { color: #4a6fa5; }
+.quest .q-feedback.miss { animation: q-shake .35s; }
+.quest .q-found { position: relative; margin: 12px 16px 0; padding: 12px 12px 10px; background: #eef2fb; border-radius: 8px; }
+.quest .q-found b { display: block; margin-bottom: 4px; padding-right: 90px; }
+.quest .q-found p { margin: 0; font-size: 13px; line-height: 1.5; }
+.quest .q-found a { color: inherit; text-decoration-color: var(--red); }
+.quest .q-found .q-earned { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.quest .q-found .q-final { margin-top: 8px; font-size: 14px; }
+.quest .q-found .q-final b { color: var(--red); font-size: 18px; }
+.q-stamp { position: absolute; top: -10px; right: 10px; padding: 4px 10px; border: 2.5px solid var(--red); border-radius: 6px;
+  color: var(--red); font-weight: 800; font-size: 14px; letter-spacing: .02em; background: rgba(238, 242, 251, .9);
+  transform: rotate(-8deg); animation: q-stamp .45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes q-stamp { from { transform: rotate(-30deg) scale(2.2); opacity: 0; } to { transform: rotate(-8deg) scale(1); opacity: 1; } }
+@keyframes q-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.quest.folded > :not(header):not(.q-close):not(.q-steps):not(.q-feedback) { display: none; }
+.quest.folded .q-feedback, .quest.folded .q-steps { padding-bottom: 10px; }
+@media (max-width: 720px) {
+  .quest { left: 12px; right: 12px; width: auto; bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 100px); max-height: 46vh; }
+  .quest .q-photo { height: 110px; }
+  .quests .q-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .quests article { padding: 18px 16px 18px; }
+  .quests .q-lede { display: none; }
+  .q-tile p { display: none; }
+  .q-tile { padding: 12px 11px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quest .q-feedback.miss, .q-stamp { animation: none; }
+}
+@media (min-width: 721px) and (max-width: 960px) {
+  .quests .q-grid { grid-template-columns: repeat(4, 1fr); }
+}
+/* The tile wash on quest cards uses the city's gold. */
+.q-tile { background-color: rgb(184 137 42 / var(--fill)); }
+.quest .q-found { background: #f6efe0; }
+.modes .quests-open { margin-left: 0; background: none; color: var(--ink); }
+.modes .quests-open[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+/* The way to the graph, and what the graph opened on the map. */
+.modes .graph-open { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 999px;
+  text-decoration: none; color: var(--ink); font-weight: 500; }
+.modes .graph-open svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.modes .graph-open svg circle { fill: currentColor; stroke: none; }
+.modes .graph-open:hover { background: var(--sky); }
+.focusbox { position: fixed; z-index: 11; right: var(--gutter); bottom: 132px; width: 280px; background: var(--paper);
+  border-radius: 12px; box-shadow: 0 2px 0 var(--red), 0 10px 30px rgba(0, 0, 0, .12); padding: 0 0 12px; }
+.focusbox header { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 8px 16px;
+  border-bottom: 1px solid var(--rule); }
+.focusbox .f-close { width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; cursor: pointer; font-size: 18px; color: var(--muted); }
+.focusbox ul { list-style: none; margin: 8px 0 0; padding: 0 16px; display: flex; flex-direction: column; gap: 5px; }
+.focusbox li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.focusbox li i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.focusbox li small { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.focusbox .f-back { display: inline-block; margin: 10px 16px 0; font-size: 12px; color: var(--ink); text-decoration-color: var(--red); text-underline-offset: 3px; }
+@media (max-width: 720px) {
+  .focusbox { left: 12px; right: 12px; width: auto; bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 100px); }
+}
+.f-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.f-actions .make-walk { margin: 0; }
+.focusbox .f-actions { margin: 10px 16px 0; }
+.focusbox .f-actions .f-back { margin: 0; }

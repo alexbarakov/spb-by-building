@@ -25,8 +25,10 @@
 <nav class="modes" aria-label="Как раскрасить город">
   <button data-mode="0" aria-pressed="true">Эпохи</button>
   <button data-mode="2" aria-pressed="false">Слои</button>
+  <a class="graph-open" href="graph.html"><span>Граф</span></a>
   <span class="modes-sep" aria-hidden="true"></span>
   <button class="walks-open" aria-haspopup="dialog"><span>Прогулка</span></button>
+  <button class="quests-open" aria-haspopup="dialog"><span>Квесты</span></button>
 </nav>
 
 <div class="tally" aria-live="polite">
@@ -94,7 +96,13 @@
 </dialog>
 
 <div id="card" class="card" hidden></div>
+<section id="focus" class="focusbox" hidden aria-live="polite"></section>
 <section id="walk" class="walkcard" hidden aria-live="polite"></section>
+<section id="quest" class="quest" hidden aria-live="polite"></section>
+<dialog id="quests" class="about quests" aria-labelledby="quests-title">
+  <button class="about-close" aria-label="Закрыть">×</button>
+  <article id="quests-body"></article>
+</dialog>
 <dialog id="walks" class="about walks" aria-labelledby="walks-title">
   <button class="about-close" aria-label="Закрыть">×</button>
   <article id="walks-body"></article>
