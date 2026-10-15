@@ -1037,7 +1037,8 @@ function walkFromGroups(groups) {
     seen.add(key);
     const w = wiki[b.wk];
     custom.push(own ? { ...own, score: 1.5 + (w?.image ? 0.4 : 0) }
-      : { bag: b.bag, bags: [b.bag], x: b.x, z: b.z, name: (w && tr(w, 'label')) || g.label, notes: [], score: 1 + (w?.image ? 0.4 : 0) });
+      : { bag: b.bag, bags: [b.bag], x: b.x ?? g.pos?.[b.bag]?.x, z: b.z ?? g.pos?.[b.bag]?.z,  // positions come from the graph here
+          name: (w && tr(w, 'label')) || g.label, notes: [], score: 1 + (w?.image ? 0.4 : 0) });
   }
   walkPrefs = { ...walkPrefs, custom, stops: Math.min(MAX_STOPS, custom.length) };
   makeWalk();
@@ -1236,13 +1237,17 @@ const focusEl = document.getElementById('focus');
 const focusIds = (new URLSearchParams(location.search).get('focus') || '').split(',').filter(Boolean);
 if (focusIds.length) fetch('data/graph.json').then(r => r.json()).then(G => showFocus(G, focusIds)).catch(() => {});
 function showFocus(G, ids) {
-  const groups = [];
+  const groups = [], pts = [];
   ids.forEach((id, i) => {
     const node = G.nodes.find(n => n.id === id), place = G.places[id];
     if (!node && !place) return;
-    const bags = place ? place.bags : G.links.filter(l => l.e === id).flatMap(l => G.places[l.p].bags);
+    const ps = place ? [place] : G.links.filter(l => l.e === id).map(l => G.places[l.p]);
+    const bags = ps.flatMap(p => p.bags);
+    pts.push(...ps.map(p => ({ x: p.x, z: p.z })));  // the attribute table here has no positions: take the graph's
     const label = place ? place.name : node.label;
-    groups.push({ label, color: i % GROUP_COLORS.length, gids: [...new Set(bags)].map(gidOf).filter(g => g >= 0) });
+    const pos = {};
+    for (const p of ps) for (const k of p.bags) pos[k] = { x: p.x, z: p.z };
+    groups.push({ label, pos, color: i % GROUP_COLORS.length, gids: [...new Set(bags)].map(gidOf).filter(g => g >= 0) });
   });
   const gids = [], grp = [];
   for (const g of groups) for (const gid of g.gids) {
@@ -1252,7 +1257,6 @@ function showFocus(G, ids) {
   uniforms.uFocus.value = [...gids, ...Array(FOCUS_MAX - gids.length).fill(-1)];
   uniforms.uFocusGroup.value = [...grp, ...Array(FOCUS_MAX - grp.length).fill(0)];
   uniforms.uFocusN.value = gids.length;
-  const pts = gids.map(building);
   const cx = pts.reduce((a, b) => a + b.x, 0) / pts.length, cz = pts.reduce((a, b) => a + b.z, 0) / pts.length;
   const spread = Math.max(...pts.map(b => Math.hypot(b.x - cx, b.z - cz)));
   flyTo(cx, cz, null, Math.min(4200, Math.max(380, spread * 2.4)));
