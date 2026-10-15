@@ -26,6 +26,7 @@ uv run python -m pipeline.s06b_facts      # «Интересные факты» 
 uv run python -m pipeline.s03_tiles       # тайлы, attrs.bin, city.json
 uv run python -m pipeline.s04_water       # вода и суша
 uv run python -m pipeline.s07_labels      # подписи улиц и рек
+uv run python -m pipeline.s13_search      # поиск по адресу, улице и названию (после s06 и s13_graph)
 python3 -m http.server 8643 --directory web
 ```
 

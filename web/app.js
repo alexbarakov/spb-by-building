@@ -271,7 +271,15 @@ const uniforms = {
   uNow: { value: 0 },        // seconds, for tiles dropping in as they load
   uPlaying: { value: 0 },    // while the film plays buildings fly in rather than grow
   uRise: { value: 0.01 },    // years a building's entrance spans; only the film widens it
+  // Search: one texel per building, lit (255) or not; while uPickOn is 1 the unlit ones dim.
+  uPick: { value: null },
+  uPickOn: { value: 0 },
 };
+const PICK_ROWS = Math.ceil(config.stats.buildings / ATTR_W);
+const pickData = new Uint8Array(ATTR_W * PICK_ROWS);
+const pickTex = new THREE.DataTexture(pickData, ATTR_W, PICK_ROWS, THREE.RedFormat, THREE.UnsignedByteType);
+pickTex.needsUpdate = true;
+uniforms.uPick.value = pickTex;
 
 const VERT = /* glsl */`
   in float bld;
@@ -286,6 +294,8 @@ const VERT = /* glsl */`
   uniform vec3 uGroupColor[${MAX_GROUPS}];
   uniform vec3 uMaquette, uUnknownColor;
   uniform float uUnknown;
+  uniform sampler2D uPick;
+  uniform float uPickOn;
   out vec3 vColor;
   out vec3 vWorld;
   out float vGid;
@@ -353,6 +363,10 @@ const VERT = /* glsl */`
     }
     if (year <= uYearFrom) c = mix(c, uMaquette, 0.8);
     if (vGid == uHover || vGid == uSelected) c = mix(c, vec3(0.0), 0.35);
+    if (uPickOn > 0.5) {
+      int gi = int(vGid + 0.5);
+      if (texelFetch(uPick, ivec2(gi % ${ATTR_W}, gi / ${ATTR_W}), 0).r < 0.5) c = mix(c, uMaquette, 0.78);
+    }
     vColor = c;
     vec4 w = modelMatrix * vec4(p, 1.0);
     vWorld = w.xyz;
@@ -1558,6 +1572,267 @@ function stopPlay() {
   playBtn.setAttribute('aria-label', 'Показать, как рос город');
 }
 playBtn.onclick = () => playing ? stopPlay() : startPlay();
+
+// ---------- Search ----------
+// The index (pipeline/s13_search.py) loads on the first click on the magnifier; house numbers come in shards,
+// a few streets' worth at a time, when a street is asked for.
+const STREET_TYPES = { 'улица': 'улица', 'ул': 'улица', 'проспект': 'проспект', 'пр': 'проспект', 'пр-т': 'проспект',
+  'пр-кт': 'проспект', 'просп': 'проспект', 'набережная': 'набережная', 'наб': 'набережная', 'переулок': 'переулок',
+  'пер': 'переулок', 'площадь': 'площадь', 'пл': 'площадь', 'бульвар': 'бульвар', 'б-р': 'бульвар', 'бул': 'бульвар',
+  'шоссе': 'шоссе', 'ш': 'шоссе', 'проезд': 'проезд', 'пр-д': 'проезд', 'линия': 'линия', 'линии': 'линия', 'лин': 'линия',
+  'аллея': 'аллея', 'дорога': 'дорога', 'дор': 'дорога', 'тупик': 'тупик', 'туп': 'тупик', 'мост': 'мост', 'спуск': 'спуск',
+  'сквер': 'сквер', 'сад': 'сад' };
+const STREET_FILLER = new Set(['реки', 'р', 'река', 'канала', 'кан', 'канал', 'острова', 'о', 'о-в']);
+const normal = s => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[–—]/g, '-')
+  .replace(/в\.\s*о\.?/g, ' во ').replace(/п\.\s*с\.?/g, ' пс ')
+  .replace(/васильевского острова/g, 'во').replace(/петроградской стороны/g, 'пс')
+  .replace(/[^a-zа-я0-9/-]+/g, ' ').replace(/\s+/g, ' ').trim();
+// 'мойка' and 'мойки', 'невский' and 'невская' meet at their stems
+const stem = w => { let s = w; for (let i = 0; i < 2 && s.length > 4 && /[аяоеыийьуюэ]$/.test(s); i++) s = s.slice(0, -1); return s; };
+function streetWords(name) {
+  const core = [], types = [];
+  for (const w of normal(name).split(' ')) {
+    if (!w || STREET_FILLER.has(w)) continue;
+    if (STREET_TYPES[w]) types.push(STREET_TYPES[w]); else core.push(w);
+  }
+  return { core, types };
+}
+// House numbers: '28', '28а', '12/14', '114-116', '25а к1 литБ', as the pipeline writes them and as people type them.
+function parseNumber(s) {
+  const t = normal(s).replace(/(\d)(корпус|корп|к|литера|лит|л|строение|стр|с)(?=\s*[\dа-я])/g, '$1 $2').split(' ');
+  const m = t[0]?.match(/^(\d+(?:-\d+)*)([а-я])?(?:\/(\d+[а-я]?))?$/);
+  if (!m) return null;
+  const rest = ' ' + t.slice(1).join(' ');
+  const lit = rest.match(/\s(?:литера|лит|л)\s*([а-я]\d*)/)?.[1] || '';
+  return { nums: m[1].split('-').map(Number), letter: m[2] || rest.replace(/\s(?:литера|лит|л)\s*[а-я]\d*/, '').match(/\s([а-я])(?=\s|$)/)?.[1] || '',
+    slash: m[3] || '', k: rest.match(/\s(?:корпус|корп|к)\s*(\d+)/)?.[1] || '', s: rest.match(/\s(?:строение|стр|с)\s*(\d+)/)?.[1] || '', lit };
+}
+const isNumber = w => /^\d+[а-я]?(?:\/\d+[а-я]?)?$/.test(w) || /^\d+(?:-\d+)+$/.test(w) ||
+  /^\d+(корпус|корп|к|литера|лит|л|строение|стр|с)\d*[а-я]?$/.test(w);
+const isSuffix = w => /^(корпус|корп|к|литера|лит|л|строение|стр|с)?\d*[а-я]?\d*$/.test(w) && w.length <= 9 ||
+  /^(корпус|корп|литера|строение)$/.test(w);
+// 'Невский 28', 'наб. Мойки, д. 12 лит. А', '8-я линия 25': the street, then the number with its parts
+function splitQuery(q) {
+  const w = normal(q).split(' ').filter(Boolean);
+  for (let i = w.length - 1; i >= 1; i--) {
+    if (!isNumber(w[i]) || !w.slice(i + 1).every(isSuffix)) continue;
+    const street = w.slice(0, i).filter((x, j, a) => !(j === a.length - 1 && /^(д|дом)$/.test(x)));
+    if (street.some(x => /[а-яa-z]/.test(x))) return { street: street.join(' '), num: parseNumber(w.slice(i).join(' ')) };
+  }
+  return null;
+}
+
+let index = null;
+const shardCache = {};
+function loadIndex() {
+  index ??= fetch('data/search.json').then(r => r.json()).then(d => {
+    const count = {};
+    d.streets = d.streets.map(([n, shard, size, x, z, dist, split]) => {
+      count[n] = (count[n] || 0) + 1;
+      return { n, shard, size, x, z, dist, key: split ? `${n}\t${dist}` : n, ...streetWords(n) };
+    });
+    // namesakes in different districts say which district they are in
+    d.streets.forEach(st => { st.namesake = count[st.n] > 1; });
+    d.names.forEach(n => { n.key = normal(n[0]); n.words = n.key.split(' '); });
+    return d;
+  });
+  return index;
+}
+function loadShard(k) {
+  shardCache[k] ??= fetch(`data/search/${k}.json`).then(r => r.json()).then(sh => {
+    for (const list of Object.values(sh)) list.forEach(e => { e.p = parseNumber(e[0]); });
+    return sh;
+  });
+  return shardCache[k];
+}
+async function entriesOf(st) { return (await loadShard(st.shard))[st.key] || []; }
+
+// How well the typed street fits a street: every typed word must start one of its words (or meet it at the stem).
+function streetScore(st, q) {
+  let score = 0;
+  for (const w of q.core) {
+    let best = 0;
+    for (const c of st.core) {
+      best = Math.max(best, c === w ? 3 : c.startsWith(w) ? 2 : stem(c).startsWith(stem(w)) && stem(w).length >= 3 ? 1.5 : 0);
+    }
+    if (!best) return 0;
+    score += best;
+  }
+  for (const t of q.types) score += st.types.includes(t) ? 1 : -0.5;
+  // 'Садовая' is Садовая улица before Малая Садовая; 'В.О.' and 'П.С.' only say which island
+  const own = st.core.filter(w => w !== 'во' && w !== 'пс').length;
+  if (q.core.filter(w => w !== 'во' && w !== 'пс').length === own) score += 1;
+  return score;
+}
+function findStreets(d, text, strict) {
+  const q = streetWords(text);
+  if (!q.core.length) return [];
+  return d.streets.map(st => [st, streetScore(st, q)]).filter(([, s]) => s > 0)
+    .sort((a, b) => b[1] - a[1] || b[0].size - a[0].size)
+    // a weaker fit only alongside fits as good: 'Невский' is Невский проспект, not also улица Александра Невского
+    .filter(([, s], _, all) => !strict || s >= all[0][1] - 0.5).map(([st]) => st);
+}
+// The house among a street's numbers: the same number, as plain as the query allows; or the nearest on its side.
+function bestHouse(entries, q) {
+  const want = q.nums[0];
+  let best = null, bestScore = Infinity;
+  for (const e of entries) {
+    const p = e.p;
+    if (!p || !p.nums.includes(want)) continue;
+    const part = (a, b, cost) => a ? (a === b ? 0 : 100) : (b ? cost : 0);
+    const s = (p.nums[0] === want ? 0 : 1) + part(q.letter, p.letter, 4) + part(q.k, p.k, 3) + part(q.s, p.s, 2) +
+      part(q.lit, p.lit, p.lit === 'а' ? 0.5 : 1) + (q.slash && q.slash !== p.slash ? 0.2 : 0);
+    if (s < bestScore) { best = e; bestScore = s; }
+  }
+  if (best) return { e: best, exact: bestScore < 100, near: false };
+  const same = entries.filter(e => e.p && e.p.nums[0] % 2 === want % 2);
+  const near = same.sort((a, b) => Math.abs(a.p.nums[0] - want) - Math.abs(b.p.nums[0] - want))[0];
+  return near ? { e: near, exact: false, near: true } : null;
+}
+
+const findInput = document.getElementById('find-input');
+const findList = document.getElementById('find-results');
+const findSel = document.getElementById('find-sel');
+// The magnifier stands just right of the mode bar, whose width depends on the fonts.
+const findBox = findInput.closest('.find'), modesBar = document.querySelector('.modes');
+function placeFind() {
+  if (phone.matches) { findBox.style.left = ''; return; }
+  // while in use it widens, and must stay on screen
+  const open = findBox.matches(':focus-within') || !findSel.hidden;
+  const w = open ? 300 : findBox.offsetWidth;
+  findBox.style.left = `${Math.min(modesBar.getBoundingClientRect().right + 8, innerWidth - w - 16)}px`;
+}
+addEventListener('resize', placeFind);
+document.fonts?.ready.then(placeFind);
+setTimeout(placeFind, 0);
+findInput.addEventListener('focus', placeFind);
+findInput.addEventListener('blur', () => setTimeout(placeFind, 200));
+let results = [], active = -1, asked = 0;
+
+async function search(text, d) {
+  const k = normal(text);
+  if (k.length < 2) return [];
+  const out = [];
+  const a = splitQuery(text);
+  if (a?.num) {
+    const houses = [];
+    for (const st of findStreets(d, a.street, true).slice(0, 4)) {
+      const h = bestHouse(await entriesOf(st), a.num);
+      if (h) houses.push([st, h]);
+    }
+    // the nearest house on another street only when no street has the house itself
+    const any = houses.some(([, h]) => h.exact);
+    for (const [st, h] of houses) {
+      if (any && !h.exact) continue;
+      out.push({ kind: 'address', label: `${st.n}, ${h.e[0]}`, street: st, house: h.e,
+        note: h.exact ? null : h.near ? `Дома ${a.num.nums[0]} в данных нет; ближайший на той же стороне улицы`
+          : `Такого корпуса или литеры в данных нет; показан дом ${h.e[0]}` });
+    }
+  }
+  const words = k.split(' ');
+  const named = d.names.filter(n => n.key.includes(k) || words.every(w => n.words.some(x => x.startsWith(w))))
+    .sort((p, q) => (q.key.startsWith(k) - p.key.startsWith(k)) || (q.key.includes(k) - p.key.includes(k)) ||
+      p[0].length - q[0].length);
+  const streets = a ? [] : findStreets(d, text).slice(0, 4).map(st => ({ kind: 'street', label: st.n, street: st }));
+  // a street typed in full comes before the buildings named after it ('Каменноостровский', 'Садовая')
+  const q = streetWords(text);
+  const full = streets.filter(r => q.core.length && q.core.every(w => r.street.core.includes(w))).slice(0, 2);
+  out.push(...full);
+  for (const n of named.slice(0, a ? 3 : 5)) out.push({ kind: 'name', label: n[0], sub: d.kinds[n[1]] + (n[4] ? ` · ${n[4]}` : ''), name: n });
+  out.push(...streets.filter(r => !full.includes(r)));
+  return out.slice(0, 8);
+}
+const plural3 = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
+function subOf(r, d) {
+  if (r.kind === 'name') return r.sub;
+  const st = r.street, where = st.namesake && d.districts[st.dist] ? ` · ${d.districts[st.dist]}` : '';
+  if (r.kind === 'address') return `Адрес${where}`;
+  return `Улица${where} · ${fmt(st.size)} ${plural3(st.size, 'здание', 'здания', 'зданий')}`;
+}
+async function renderResults() {
+  const d = await loadIndex();
+  findList.innerHTML = results.map((r, i) => `<li role="option" data-i="${i}" aria-selected="${i === active}">
+    <b>${esc(r.label)}</b><span>${esc(subOf(r, d))}</span>${r.note ? `<em>${esc(r.note)}</em>` : ''}</li>`).join('')
+    || (normal(findInput.value).length > 1 ? '<li class="none">Ничего не нашлось</li>' : '');
+  findList.hidden = !findList.innerHTML;
+  findInput.setAttribute('aria-expanded', String(!findList.hidden));
+  findList.querySelectorAll('[data-i]').forEach(li => li.onmousedown = e => { e.preventDefault(); choose(results[+li.dataset.i]); });
+}
+findInput.addEventListener('focus', loadIndex);
+findInput.addEventListener('input', async () => {
+  const n = ++asked, d = await loadIndex();
+  const r = await search(findInput.value, d);
+  if (n !== asked) return;  // a later keystroke has its own answer
+  results = r; active = results.length ? 0 : -1;
+  renderResults();
+});
+findInput.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (results.length) active = (active + (e.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length;
+    renderResults();
+  } else if (e.key === 'Enter' && results[active]) { choose(results[active]); }
+  else if (e.key === 'Escape') { findList.hidden = true; findInput.blur(); }
+  e.stopPropagation();
+});
+findInput.addEventListener('blur', () => setTimeout(() => { findList.hidden = true; }, 150));
+
+// What the search found stays lit while the rest of the city dims.
+let found = null;
+function setLit(gids) {
+  pickData.fill(0);
+  for (const g of gids) pickData[g] = 255;
+  pickTex.needsUpdate = true;
+  uniforms.uPickOn.value = gids.length ? 1 : 0;
+}
+function clearFound() {
+  if (found && pinnedGid >= 0) pinCard(-1);
+  found = null; findSel.hidden = true; setLit([]); orbit = false; placeFind();
+}
+async function choose(r) {
+  findList.hidden = true; findInput.blur();
+  findInput.value = r.label;
+  found = r;
+  renderSel();
+  if (r.kind === 'street') {
+    const es = await entriesOf(r.street);
+    if (found !== r || !es.length) return;
+    setLit([...new Set(es.map(e => e[1]))]);
+    pinCard(-1);
+    const xs = es.map(e => e[2]), zs = es.map(e => e[3]);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 150);
+    flyTo((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...zs) + Math.min(...zs)) / 2, null, Math.min(5000, span * 1.5));
+    return;
+  }
+  let gids, x, z;
+  if (r.kind === 'address') {
+    // every building under this number: a house of several parts lights up whole
+    const es = await entriesOf(r.street);
+    gids = [...new Set(es.filter(e => e[0] === r.house[0]).map(e => e[1]))];
+    [, , x, z] = r.house;
+  } else {
+    gids = r.name.slice(5); [x, z] = r.name.slice(2, 4);
+  }
+  if (found !== r) return;
+  setLit(gids);
+  const g = r.kind === 'address' ? r.house[1] : gids[0];
+  flyTo(x, z, () => { if (found === r) { pinCard(g, innerWidth * 0.62, innerHeight * 0.2); orbit = true; } }, 420);
+}
+function renderSel() {
+  if (!found) { findSel.hidden = true; return; }
+  findSel.innerHTML = `<span>${esc(found.label)}</span><button class="sel-clear" aria-label="Сбросить поиск">×</button>`;
+  findSel.hidden = false;
+  placeFind();
+  findSel.querySelector('.sel-clear').onclick = () => { clearFound(); findInput.value = ''; };
+}
+
+// The camera slowly circles what was found, until the viewer takes over.
+let orbit = false;
+canvas.addEventListener('pointerdown', () => { orbit = false; });
+canvas.addEventListener('wheel', () => { orbit = false; }, { passive: true });
+controls.autoRotateSpeed = 0.6;
+const orbitTick = () => { controls.autoRotate = orbit && !flight; requestAnimationFrame(orbitTick); };
+orbitTick();
 
 // ---------- Loop ----------
 function resize() {

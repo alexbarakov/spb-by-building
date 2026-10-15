@@ -30,6 +30,12 @@
   <button class="walks-open" aria-haspopup="dialog"><span>Прогулка</span></button>
   <button class="quests-open" aria-haspopup="dialog"><span>Квесты</span></button>
 </nav>
+<div class="find" role="search">
+  <input type="search" id="find-input" autocomplete="off" spellcheck="false" placeholder="Адрес, здание или улица"
+    aria-label="Найти здание, адрес или улицу" aria-controls="find-results" aria-expanded="false">
+  <ul id="find-results" class="find-results" role="listbox" hidden></ul>
+  <div id="find-sel" class="find-sel" hidden></div>
+</div>
 
 <div class="tally" aria-live="polite">
   <span id="year" class="tally-year">2025</span>
