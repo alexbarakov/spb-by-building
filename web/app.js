@@ -1317,6 +1317,8 @@ document.getElementById('scene')?.addEventListener('pointerdown', () => {
   if (phone.matches && !panelEl.classList.contains('collapsed')) setCollapsed(true);
 });
 setCollapsed(phone.matches);
+// На телефоне выбор «Слоёв» в меню сразу открывает список слоёв.
+document.querySelector(`.modes button[data-mode="${MODE.layers}"]`)?.addEventListener('click', () => { if (phone.matches) setCollapsed(false); });
 phone.addEventListener('change', () => setCollapsed(phone.matches));
 
 const ICON = {
