@@ -4,6 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LAYRS: Петербург</title>
+<meta name="description" content="Около 107 тысяч зданий Петербурга в 3D по году постройки и восемнадцать слоёв истории: от квартир Пушкина и дворов-колодцев до сводок МПВО 1941-го и «Последнего адреса». У каждой истории источник.">
+<link rel="canonical" href="https://stop-token.com/ru/lab/spb/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="LAYRS: Петербург">
+<meta property="og:description" content="Около 107 тысяч зданий Петербурга в 3D по году постройки и восемнадцать слоёв истории: от квартир Пушкина и дворов-колодцев до сводок МПВО 1941-го и «Последнего адреса». У каждой истории источник.">
+<meta property="og:url" content="https://stop-token.com/ru/lab/spb/">
+<meta property="og:image" content="https://stop-token.com/ru/lab/spb/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" type="text/csv" title="Здания Петербурга по году постройки (CSV)" href="data/buildings.csv">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "WebApplication", "name": "LAYRS: Петербург", "url": "https://stop-token.com/ru/lab/spb/", "description": "Около 107 тысяч зданий Петербурга в 3D по году постройки и восемнадцать слоёв истории: от квартир Пушкина и дворов-колодцев до сводок МПВО 1941-го и «Последнего адреса». У каждой истории источник.", "inLanguage": "ru", "applicationCategory": "ReferenceApplication", "operatingSystem": "Any (web browser with WebGL)", "isAccessibleForFree": true, "image": "https://stop-token.com/ru/lab/spb/og.png", "about": {"@type": "City", "name": "Санкт-Петербург"}, "author": {"@type": "Person", "name": "Alex Barakov", "url": "https://www.linkedin.com/in/alexanderbarakov"}, "isBasedOn": {"@type": "CreativeWork", "name": "Paris, building by building", "url": "https://paris.bogachev.fr/", "author": {"@type": "Person", "name": "Alexander Bogachev"}}}, {"@type": "Dataset", "name": "Здания Петербурга по году постройки", "description": "Около 107 тысяч зданий Петербурга в 3D по году постройки и восемнадцать слоёв истории: от квартир Пушкина и дворов-колодцев до сводок МПВО 1941-го и «Последнего адреса». У каждой истории источник.", "url": "https://stop-token.com/ru/lab/spb/explore/", "spatialCoverage": {"@type": "Place", "name": "Санкт-Петербург"}, "creator": {"@type": "Person", "name": "Alex Barakov"}, "isAccessibleForFree": true, "distribution": [{"@type": "DataDownload", "encodingFormat": "text/csv", "contentUrl": "https://stop-token.com/ru/lab/spb/data/buildings.csv"}, {"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://stop-token.com/ru/lab/spb/data/layers.json"}]}]}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=PT+Serif:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
@@ -11,6 +23,7 @@
 <script src="logo.js" defer></script>
 </head>
 <body>
+<noscript><p style="padding:24px;font:16px sans-serif">Для карты нужен JavaScript. Те же здания и истории — обычными страницами: <a href="explore/">Петербург страницами</a></p></noscript>
 <canvas id="scene" aria-label="Трёхмерная карта зданий Петербурга"></canvas>
 <div class="veil veil-top" aria-hidden="true"></div>
 <div class="veil veil-bottom" aria-hidden="true"></div>
@@ -94,6 +107,7 @@
     1880–1917. Адреса Пушкина, Достоевского и Серебряного века отобраны вручную, у каждого есть ссылка на Википедию;
     остальные слои собраны автоматически и могут содержать ошибки.</p>
 
+    <p class="pages">Те же здания и истории есть обычными страницами, для чтения и для поисковиков: <a href="explore/">Петербург, дом за домом</a>.</p>
     <h3>Ограничения</h3>
     <p>Год известен у 43% зданий: в открытых данных почти нет дат для мелких построек, гаражей и промзон. Карта покрывает
     основную часть города без Кронштадта, Петергофа, Пушкина и Колпино. Слои «Коммуналки» и «Разрушены и отстроены»
